@@ -1,7 +1,4 @@
-import {Lexer} from "../../lexer/lexer.ts";
-import {Parser} from "../../parser/parser.ts";
-import {Token} from "../../lexer/lexerTypes.ts";
-import {Program} from "../../parser/ParserTypes.ts";
+
 
 export interface BugErrorOptions {
     type: BugErrorType
