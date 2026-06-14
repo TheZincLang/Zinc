@@ -73,6 +73,11 @@ export type Node =
     | {type: NodeType.SwitchNode, data: SwitchNode}
     | {type: NodeType.SwitchCaseNode, data: SwitchCaseNode}
     | {type: NodeType.SwitchDefaultNode, data: SwitchDefaultNode}
+    | {type: NodeType.AssignmentNode, data: AssignmentNode}
+    | {type: NodeType.WhileNode, data: WhileNode}
+    | {type: NodeType.BreakNode, data: BreakNode}
+    | {type: NodeType.ContinueNode, data: ContinueNode}
+    | {type: NodeType.ReturnNode, data: ReturnNode}
 
 export enum NodeType {
     LetNode,
@@ -93,6 +98,11 @@ export enum NodeType {
     SwitchNode,
     SwitchCaseNode,
     SwitchDefaultNode,
+    AssignmentNode,
+    WhileNode,
+    BreakNode,
+    ContinueNode,
+    ReturnNode,
 }
 
 export interface LetNode {
@@ -143,7 +153,9 @@ export interface BinaryNode {
 export enum BitwiseOperator {
     Or,
     Xor,
-    And
+    And,
+    ShiftLeft,
+    ShiftRight
 }
 
 export interface BitwiseNode {
@@ -261,4 +273,40 @@ export interface SwitchCaseNode {
 
 export interface SwitchDefaultNode {
     body: Node
+}
+
+export enum AssignmentOperator {
+    Assign,
+    AddAssign,
+    SubAssign,
+    MulAssign,
+    DivAssign,
+    ModAssign,
+    ExpAssign,
+    ShiftLeftAssign,
+    ShiftRightAssign,
+    BitAndAssign,
+    BitOrAssign,
+    BitXorAssign,
+    AndAssign,
+    OrAssign,
+}
+
+export interface AssignmentNode {
+    operator: AssignmentOperator
+    target: Node
+    value: Node
+}
+
+export interface WhileNode {
+    condition: Node
+    body: Node
+}
+
+export interface BreakNode {}
+
+export interface ContinueNode {}
+
+export interface ReturnNode {
+    value: Node | null
 }

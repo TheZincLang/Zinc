@@ -1,6 +1,102 @@
-switch(test) {
+// ── Zinc parser test file ───────────────────────────────────────────────
+// Exercises every construct the parser currently understands.
+
+/* ── enums (global scope only) ────────────────────────────────────────── */
+const enum Color {
+    Red,
+    Green = 5,
+    Blue
+}
+
+enum Direction: int {
+    North = 1,
+    East,
+    South,
+    West,
+}
+
+/* ── variable declarations ────────────────────────────────────────────── */
+let counter: int = 0
+const greeting: string = "hello"
+let ratio = 3.14
+let smallFloat = 1.5f
+let letter = 'z'
+let isReady = True
+let numbers: int[]
+
+/* ── operator precedence & expressions ────────────────────────────────── */
+let arithmetic = 2 + 3 * 4 - 10 / 2
+let power = 2 ** 3 ** 2
+let bitwise = 1 | 2 & 3 ^ 4
+let shifted = 8 >> 1 << 2
+let comparison = (counter < 10) && (counter >= 0) || isReady
+let ternary = counter > 0 ? Color.Green : Color.Red
+let negated = -counter
+let inverted = ~bitwise
+let notReady = !isReady
+
+/* ── assignments (all compound forms) ─────────────────────────────────── */
+counter = 10
+counter += 5
+counter -= 2
+counter *= 3
+counter /= 2
+counter %= 4
+counter **= 2
+counter |= 1
+counter &= 6
+counter ^= 3
+counter <<= 1
+counter >>= 1
+
+/* ── postfix & prefix ─────────────────────────────────────────────────── */
+counter++
+print(counter)
+let prefixed = ++counter
+counter--
+
+/* ── field access, indexing and calls ─────────────────────────────────── */
+print(greeting)
+print("counter is", counter)
+numbers[0] = 42
+let first = numbers[counter + 1]
+let nested = container.items[0].value
+object.method(1, 2, 3)
+
+/* ── string templates with interpolation ──────────────────────────────── */
+let message = `counter is ${counter} and double is ${counter * 2}!`
+let plain = `no interpolation here`
+
+/* ── if / else if / else ──────────────────────────────────────────────── */
+if (counter > 100) {
+    print("big")
+} else if (counter > 10) {
+    print("medium")
+} else {
+    print("small")
+}
+
+/* ── while loop with break / continue ─────────────────────────────────── */
+while (counter > 0) {
+    counter -= 1
+    if (counter == 3) {
+        continue
+    }
+    if (counter == 1) {
+        break
+    }
+    print(counter)
+}
+
+/* ── switch with cases, default and break ─────────────────────────────── */
+switch (counter) {
     case 0: {
         print("value is 0")
+        break
+    }
+    case 1: {
+        let local = counter * 10
+        print(local)
         break
     }
     default: {
@@ -8,3 +104,6 @@ switch(test) {
         break
     }
 }
+
+/* ── return statements ────────────────────────────────────────────────── */
+return counter + 1

@@ -604,7 +604,6 @@ export class Lexer {
                     switch (currentChar){
                         case "{":{
                             scopeStack.push(new ScopeExitOperation(ScopeExitOperations.none))
-                            console.log(scopeStack)
                             currentToken.type = TokenType.StackOpen
                             currentChar = this.getChar()
                             break
@@ -865,7 +864,7 @@ export class Lexer {
                             currentToken.type = TokenType.DoubleLiteral
                             currentChar = this.getChar()
                             let fracPart = 0
-                            let divisor = 10
+                            let divisor = 1
                             while(classify(currentChar) === CharType.number){
                                 fracPart = fracPart * 10 + currentChar.charCodeAt(0) - 0x30
                                 divisor *= 10

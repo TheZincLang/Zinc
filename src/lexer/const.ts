@@ -20,6 +20,10 @@ export const KEYWORDS_MAP = new Map<string, TokenType>([
     ["case", TokenType.Case],
     ["default", TokenType.Default],
     ["for", TokenType.For],
+    ["while", TokenType.While],
+    ["break", TokenType.Break],
+    ["continue", TokenType.Continue],
+    ["return", TokenType.Return],
 ])
 
 

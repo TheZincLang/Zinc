@@ -85,6 +85,10 @@ export enum TokenType {
     Case,
     Default,
     For,
+    While,
+    Break,
+    Continue,
+    Return,
     biggerThanAllKeywords,
     // ...
 
@@ -185,7 +189,7 @@ export class ScopeExitOperation {
 
     setOperation(operation: ScopeExitOperations) {
         if(operation === ScopeExitOperations.none) return
-        this.raw |= (1 << operation - 1)
+        this.raw |= (1 << operation)
     }
 
     hasOperation(operation: ScopeExitOperations): boolean {

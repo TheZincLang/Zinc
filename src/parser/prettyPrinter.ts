@@ -25,8 +25,10 @@ import {
     LetNode, TernaryNode, BinaryNode, MathNode, BitwiseNode,
     UnaryNode, PostfixNode, FieldAccessNode, LiteralNode,
     VariableNode, CallNode, StringTemplateNode,
+    EnumNode, CodeBlockNode, IfNode, SwitchNode, SwitchCaseNode,
+    SwitchDefaultNode, AssignmentNode, WhileNode, ReturnNode,
     Modifier, ExpressionOperator, BinaryExpressionOperator,
-    BitwiseOperator, UnaryOperator, PostfixOperator,
+    BitwiseOperator, UnaryOperator, PostfixOperator, AssignmentOperator,
     LiteralType, StringTemplatePartType,
 } from "./ParserTypes.ts"
 
@@ -65,6 +67,17 @@ const NODE_COLORS: Partial<Record<string, string>> = {
     VariableNode:       C.green,
     CallNode:           C.cyan,
     StringTemplateNode: C.green,
+    EnumNode:           C.magenta,
+    CodeBlock:          C.white,
+    IfNode:             C.blue,
+    SwitchNode:         C.blue,
+    SwitchCaseNode:     C.cyan,
+    SwitchDefaultNode:  C.cyan,
+    AssignmentNode:     C.magenta,
+    WhileNode:          C.blue,
+    BreakNode:          C.red,
+    ContinueNode:       C.red,
+    ReturnNode:         C.red,
 }
 
 // ─── SYMBOL TABLE TYPES ───────────────────────────────────────────────────────
@@ -165,9 +178,11 @@ const BIN_OP: Record<BinaryExpressionOperator, string> = {
 }
 
 const BIT_OP: Record<BitwiseOperator, string> = {
-    [BitwiseOperator.Or]:  `${C.teal}|${R}`,
-    [BitwiseOperator.Xor]: `${C.teal}^${R}`,
-    [BitwiseOperator.And]: `${C.teal}&${R}`,
+    [BitwiseOperator.Or]:         `${C.teal}|${R}`,
+    [BitwiseOperator.Xor]:        `${C.teal}^${R}`,
+    [BitwiseOperator.And]:        `${C.teal}&${R}`,
+    [BitwiseOperator.ShiftLeft]:  `${C.teal}<<${R}`,
+    [BitwiseOperator.ShiftRight]: `${C.teal}>>${R}`,
 }
 
 const UNARY_OP: Record<UnaryOperator, string> = {
@@ -182,6 +197,23 @@ const POSTFIX_OP: Record<PostfixOperator, string> = {
     [PostfixOperator.increment]: `${C.pink}++${R}`,
     [PostfixOperator.decrement]: `${C.pink}--${R}`,
     [PostfixOperator.index]:     `${C.pink}[]${R}`,
+}
+
+const ASSIGN_OP: Record<AssignmentOperator, string> = {
+    [AssignmentOperator.Assign]:           `${C.magenta}=${R}`,
+    [AssignmentOperator.AddAssign]:        `${C.magenta}+=${R}`,
+    [AssignmentOperator.SubAssign]:        `${C.magenta}-=${R}`,
+    [AssignmentOperator.MulAssign]:        `${C.magenta}*=${R}`,
+    [AssignmentOperator.DivAssign]:        `${C.magenta}/=${R}`,
+    [AssignmentOperator.ModAssign]:        `${C.magenta}%=${R}`,
+    [AssignmentOperator.ExpAssign]:        `${C.magenta}**=${R}`,
+    [AssignmentOperator.ShiftLeftAssign]:  `${C.magenta}<<=${R}`,
+    [AssignmentOperator.ShiftRightAssign]: `${C.magenta}>>=${R}`,
+    [AssignmentOperator.BitAndAssign]:     `${C.magenta}&=${R}`,
+    [AssignmentOperator.BitOrAssign]:      `${C.magenta}|=${R}`,
+    [AssignmentOperator.BitXorAssign]:     `${C.magenta}^=${R}`,
+    [AssignmentOperator.AndAssign]:        `${C.magenta}&&=${R}`,
+    [AssignmentOperator.OrAssign]:         `${C.magenta}||=${R}`,
 }
 
 const LIT_TYPE: Record<LiteralType, string> = {
@@ -324,6 +356,120 @@ function renderNode(node: Node, ctx: Ctx): Line[] {
                     lines.push({ indent: deeper(ctx).depth, text: `${DIM}expr:${R}` })
                     lines.push(...recurse(part.value, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
                 }
+            }
+            break
+        }
+
+        // ── EnumNode ─────────────────────────────────────────────────────────
+        case NodeType.EnumNode: {
+            const d = node.data as EnumNode
+            const mods = [...d.modifiers].map(m => Modifier[m]).join(", ") || "none"
+            lines.push(header(typeName, resolveType(d.id, ctx), ctx))
+            lines.push(leaf("type", resolveType(d.type, ctx), deeper(ctx)))
+            lines.push(leaf("mods", `${DIM}${mods}${R}`,       deeper(ctx)))
+            for (const option of d.options) {
+                if (option.value) {
+                    lines.push({ indent: deeper(ctx).depth, text: `${DIM}option:${R} ${resolveVar(option.id, ctx)} ${DIM}=${R}` })
+                    lines.push(...recurse(option.value, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+                } else {
+                    lines.push(leaf("option", resolveVar(option.id, ctx), deeper(ctx)))
+                }
+            }
+            break
+        }
+
+        // ── CodeBlock ────────────────────────────────────────────────────────
+        case NodeType.CodeBlock: {
+            const d = node.data as CodeBlockNode
+            lines.push(header(typeName, `${DIM}(${d.body.length} statement(s))${R}`, ctx))
+            for (const statement of d.body) {
+                lines.push(...recurse(statement, deeper(ctx)))
+            }
+            break
+        }
+
+        // ── IfNode ───────────────────────────────────────────────────────────
+        case NodeType.IfNode: {
+            const d = node.data as IfNode
+            lines.push(header(typeName, undefined, ctx))
+            lines.push({ indent: deeper(ctx).depth, text: `${DIM}condition:${R}` })
+            lines.push(...recurse(d.condition, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            lines.push({ indent: deeper(ctx).depth, text: `${DIM}then:${R}` })
+            lines.push(...recurse(d.ifNode, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            if (d.elseNode) {
+                lines.push({ indent: deeper(ctx).depth, text: `${DIM}else:${R}` })
+                lines.push(...recurse(d.elseNode, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            }
+            break
+        }
+
+        // ── SwitchNode ───────────────────────────────────────────────────────
+        case NodeType.SwitchNode: {
+            const d = node.data as SwitchNode
+            lines.push(header(typeName, undefined, ctx))
+            lines.push({ indent: deeper(ctx).depth, text: `${DIM}expression:${R}` })
+            lines.push(...recurse(d.expression, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            for (const switchCase of d.cases) {
+                lines.push(...recurse(switchCase, deeper(ctx)))
+            }
+            break
+        }
+
+        // ── SwitchCaseNode ───────────────────────────────────────────────────
+        case NodeType.SwitchCaseNode: {
+            const d = node.data as SwitchCaseNode
+            lines.push(header(typeName, undefined, ctx))
+            lines.push({ indent: deeper(ctx).depth, text: `${DIM}value:${R}` })
+            lines.push(...recurse(d.value, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            lines.push({ indent: deeper(ctx).depth, text: `${DIM}body:${R}` })
+            lines.push(...recurse(d.body, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            break
+        }
+
+        // ── SwitchDefaultNode ────────────────────────────────────────────────
+        case NodeType.SwitchDefaultNode: {
+            const d = node.data as SwitchDefaultNode
+            lines.push(header(typeName, undefined, ctx))
+            lines.push({ indent: deeper(ctx).depth, text: `${DIM}body:${R}` })
+            lines.push(...recurse(d.body, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            break
+        }
+
+        // ── AssignmentNode ───────────────────────────────────────────────────
+        case NodeType.AssignmentNode: {
+            const d = node.data as AssignmentNode
+            lines.push(header(typeName, ASSIGN_OP[d.operator], ctx))
+            lines.push({ indent: deeper(ctx).depth, text: `${DIM}target:${R}` })
+            lines.push(...recurse(d.target, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            lines.push({ indent: deeper(ctx).depth, text: `${DIM}value:${R}` })
+            lines.push(...recurse(d.value, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            break
+        }
+
+        // ── WhileNode ────────────────────────────────────────────────────────
+        case NodeType.WhileNode: {
+            const d = node.data as WhileNode
+            lines.push(header(typeName, undefined, ctx))
+            lines.push({ indent: deeper(ctx).depth, text: `${DIM}condition:${R}` })
+            lines.push(...recurse(d.condition, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            lines.push({ indent: deeper(ctx).depth, text: `${DIM}body:${R}` })
+            lines.push(...recurse(d.body, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            break
+        }
+
+        // ── BreakNode / ContinueNode ─────────────────────────────────────────
+        case NodeType.BreakNode:
+        case NodeType.ContinueNode: {
+            lines.push(header(typeName, undefined, ctx))
+            break
+        }
+
+        // ── ReturnNode ───────────────────────────────────────────────────────
+        case NodeType.ReturnNode: {
+            const d = node.data as ReturnNode
+            lines.push(header(typeName, undefined, ctx))
+            if (d.value) {
+                lines.push(...recurse(d.value, deeper(ctx)))
             }
             break
         }

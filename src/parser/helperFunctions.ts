@@ -1,4 +1,5 @@
 import {
+    AssignmentOperator,
     BinaryExpressionOperator,
     BitwiseOperator,
     EnumNode,
@@ -81,4 +82,24 @@ export function _switchCase(value: Node, body: Node): Node {
 
 export function _switchDefault(body: Node): Node {
     return {type: NodeType.SwitchDefaultNode, data: {body: body}}
+}
+
+export function _assignment(op: AssignmentOperator, target: Node, value: Node): Node {
+    return {type: NodeType.AssignmentNode, data: {operator: op, target: target, value: value}}
+}
+
+export function _while(condition: Node, body: Node): Node {
+    return {type: NodeType.WhileNode, data: {condition: condition, body: body}}
+}
+
+export function _break(): Node {
+    return {type: NodeType.BreakNode, data: {}}
+}
+
+export function _continue(): Node {
+    return {type: NodeType.ContinueNode, data: {}}
+}
+
+export function _return(value: Node | null = null): Node {
+    return {type: NodeType.ReturnNode, data: {value: value}}
 }
