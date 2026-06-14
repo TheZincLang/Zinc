@@ -1,4 +1,4 @@
-import { PrettyToken, TokenType } from "./lexerTypes.ts" // adjust path
+import { PrettyToken } from "./lexerTypes.ts" // adjust path
 
 const RESET  = "\x1b[0m"
 const DIM    = "\x1b[2m"
@@ -40,8 +40,8 @@ export function printTokens(
     const filtered = tokens.filter(t => {
         if (hideNewlines && t.type === "Newline") return false
         if (hideSOFEOF  && (t.type === "SOF" || t.type === "EOF")) return false
-        if (filter && !filter(t)) return false
-        return true
+        return !(filter && !filter(t));
+
     })
 
     if (label) console.log(`\n${BOLD}── ${label} ──${RESET}`)
