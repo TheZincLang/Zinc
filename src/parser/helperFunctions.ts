@@ -4,14 +4,19 @@ import {
     BitwiseOperator,
     EnumNode,
     ExpressionOperator,
+    FunctionNode,
     LiteralType,
     Node,
     NodeType,
     PostfixOperator,
     StringTemplatePart,
     StringTemplatePartType,
+    StructNode,
+    TypeNode,
+    TypeNodeKind,
     UnaryOperator
 } from "./ParserTypes.ts";
+import {TypeKind} from "../global/types/globalTypes.ts";
 
 export function _binary(op: BinaryExpressionOperator, left: Node, right: Node): Node {
     return { type: NodeType.BinaryNode, data: { operator: op, left: left, right: right } }
@@ -102,4 +107,20 @@ export function _continue(): Node {
 
 export function _return(value: Node | null = null): Node {
     return {type: NodeType.ReturnNode, data: {value: value}}
+}
+
+export function _function(data: FunctionNode): Node {
+    return {type: NodeType.FunctionNode, data}
+}
+
+export function _struct(data: StructNode): Node {
+    return {type: NodeType.StructNode, data}
+}
+
+export function _nameType(id: number, resolved: TypeKind): TypeNode {
+    return {kind: TypeNodeKind.Name, id, resolved}
+}
+
+export function _arrayType(element: TypeNode): TypeNode {
+    return {kind: TypeNodeKind.Array, element}
 }

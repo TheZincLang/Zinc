@@ -15,8 +15,21 @@ enum Direction: int {
     West,
 }
 
+/* ── structs / classes (global scope only) ────────────────────────────── */
+struct Point {
+    x: int,
+    y: int,
+}
+
+class Rect {
+    topLeft: Point
+    size: Point
+    label: string[]
+}
+
 /* ── variable declarations ────────────────────────────────────────────── */
 let counter: int = 0
+let origin: Point
 const greeting: string = "hello"
 let ratio = 3.14
 let smallFloat = 1.5f
@@ -103,6 +116,38 @@ switch (counter) {
         print("value is something else")
         break
     }
+}
+
+/* ── function declarations ────────────────────────────────────────────── */
+fn noArgs() {
+    print("hello")
+}
+
+func add(a: int, b: int): int {
+    return a + b
+}
+
+function greet(name: string): string {
+    let line = `hi ${name}`
+    return line
+}
+
+fn sumAll(values: int[]): int {
+    let total = 0
+    let i = 0
+    while (i < 10) {
+        total += values[i]
+        i += 1
+    }
+    return total
+}
+
+fn makeList(): int[] {
+    return numbers
+}
+
+export async fn fetchValue(id: int): int {
+    return add(id, 1)
 }
 
 /* ── return statements ────────────────────────────────────────────────── */

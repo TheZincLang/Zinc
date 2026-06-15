@@ -50,6 +50,27 @@ export enum Modifier {
     export,
 }
 
+export enum TypeNodeKind {
+    Name,    // a named type — primitive (int, bool) or user-defined (Point)
+    Array,   // T[]
+    // future: Optional (T?), Reference (&T), Pointer (*T), Generic (Foo<T>)
+}
+
+/**
+ * A parsed type annotation.
+ *
+ * `Name` carries the interned identifier id of the written name (`id`), or -1
+ * when the type was synthesized rather than written (an omitted return type, an
+ * un-annotated `let`). `resolved` holds the primitive `TypeKind` when the name
+ * is a known primitive, otherwise `TypeKind.Unknown` — meaning it names a
+ * user-defined type to be resolved by a later semantic pass.
+ *
+ * `Array` wraps an element type, so `int[][]` nests two `Array` nodes.
+ */
+export type TypeNode =
+    | {kind: TypeNodeKind.Name; id: number; resolved: TypeKind}
+    | {kind: TypeNodeKind.Array; element: TypeNode}
+
 export interface Program {
     children: Node[]
 }
@@ -78,6 +99,8 @@ export type Node =
     | {type: NodeType.BreakNode, data: BreakNode}
     | {type: NodeType.ContinueNode, data: ContinueNode}
     | {type: NodeType.ReturnNode, data: ReturnNode}
+    | {type: NodeType.FunctionNode, data: FunctionNode}
+    | {type: NodeType.StructNode, data: StructNode}
 
 export enum NodeType {
     LetNode,
@@ -103,12 +126,14 @@ export enum NodeType {
     BreakNode,
     ContinueNode,
     ReturnNode,
+    FunctionNode,
+    StructNode,
 }
 
 export interface LetNode {
     modifiers: Set<Modifier>
     variableId: number
-    variableType: TypeKind
+    variableType: TypeNode
     definition?: Node
 }
 
@@ -198,16 +223,6 @@ export interface CallNode {
     arguments: Node[]
 }
 
-export interface CallableNode {
-    body: Node
-    arguments: Node[]
-}
-
-export interface ArgumentNode {
-    value: Node
-    Type: undefined
-}
-
 export interface VariableNode {
     variableId: number
 }
@@ -247,7 +262,7 @@ export interface EnumOptionNode {
 export interface EnumNode {
     id: number
     modifiers: Set<Modifier>
-    type: TypeKind
+    type: TypeNode
     options: EnumOptionNode[]
 }
 
@@ -309,4 +324,28 @@ export interface ContinueNode {}
 
 export interface ReturnNode {
     value: Node | null
+}
+
+export interface FunctionParameter {
+    id: number
+    type: TypeNode
+}
+
+export interface FunctionNode {
+    id: number
+    modifiers: Set<Modifier>
+    parameters: FunctionParameter[]
+    returnType: TypeNode
+    body: Node
+}
+
+export interface StructField {
+    id: number
+    type: TypeNode
+}
+
+export interface StructNode {
+    id: number
+    modifiers: Set<Modifier>
+    fields: StructField[]
 }

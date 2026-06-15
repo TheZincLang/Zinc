@@ -59,6 +59,8 @@ compile(path)
 
 ## Current implementation status
 
-**Working:** variable declarations (`let`/`const`), enums, all expression forms (arithmetic, bitwise, logical, ternary, string templates, field access, indexing, function calls, pre/postfix operators), all assignment operators, `if`/`else`, `while`, `switch`/`case`/`default`, `break`/`continue`/`return`, import graph resolution, pretty-printing tokens and AST.
+**Working:** variable declarations (`let`/`const`), enums, `struct`/`class` declarations (named fields with type annotations), `fn`/`func`/`function` declarations (params, optional return type, array types, `async`/`export` modifiers), type annotations via `parseType()` → `TypeNode` (primitive names resolved to `TypeKind`, user types carried by interned id, `[]` array suffixes; reused by `let`, params, return types, and enum backing types), all expression forms (arithmetic, bitwise, logical, ternary, string templates, field access, indexing, function calls, pre/postfix operators), all assignment operators, `if`/`else`, `while`, `switch`/`case`/`default`, `break`/`continue`/`return`, import graph resolution, pretty-printing tokens and AST.
 
-**Not yet implemented:** `fn`/function declarations, `for` loops (parser throws `"not implemented yet"` for these tokens).
+Declared functions populate `symbolTable.functions`; declared types (enums + structs) populate `symbolTable.types`, so type annotations and enum/struct headers pretty-print by name instead of `type#N`.
+
+**Not yet implemented:** `for` loops and `import` statements (parser throws `"not implemented yet"` for these tokens).

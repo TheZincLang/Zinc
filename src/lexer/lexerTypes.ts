@@ -76,6 +76,7 @@ export enum TokenType {
     Let,
     Const,
     Enum,
+    Struct,
     Async,
     If,
     Else,

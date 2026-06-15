@@ -26,11 +26,13 @@ import {
     UnaryNode, PostfixNode, FieldAccessNode, LiteralNode,
     VariableNode, CallNode, StringTemplateNode,
     EnumNode, CodeBlockNode, IfNode, SwitchNode, SwitchCaseNode,
-    SwitchDefaultNode, AssignmentNode, WhileNode, ReturnNode,
+    SwitchDefaultNode, AssignmentNode, WhileNode, ReturnNode, FunctionNode,
+    StructNode, TypeNode, TypeNodeKind,
     Modifier, ExpressionOperator, BinaryExpressionOperator,
     BitwiseOperator, UnaryOperator, PostfixOperator, AssignmentOperator,
     LiteralType, StringTemplatePartType,
 } from "./ParserTypes.ts"
+import {TypeKind} from "../global/types/globalTypes.ts"
 
 // ─── ANSI ────────────────────────────────────────────────────────────────────
 
@@ -78,6 +80,8 @@ const NODE_COLORS: Partial<Record<string, string>> = {
     BreakNode:          C.red,
     ContinueNode:       C.red,
     ReturnNode:         C.red,
+    FunctionNode:       C.magenta,
+    StructNode:         C.magenta,
 }
 
 // ─── SYMBOL TABLE TYPES ───────────────────────────────────────────────────────
@@ -140,6 +144,38 @@ function resolveVar(id: number, ctx: Ctx): string {
 /** Resolve a types id to a name via the symbol table (falls back to types#id). */
 function resolveType(id: number, ctx: Ctx): string {
     return ctx.symbolTable?.types?.get(id) ?? `${DIM}type#${id}${R}`
+}
+
+/** Canonical display names for primitive TypeKinds. */
+const TYPE_NAME: Partial<Record<TypeKind, string>> = {
+    [TypeKind.Int]:     "int",
+    [TypeKind.Float]:   "float",
+    [TypeKind.Double]:  "double",
+    [TypeKind.Bool]:    "bool",
+    [TypeKind.Char]:    "char",
+    [TypeKind.String]:  "string",
+    [TypeKind.Void]:    "void",
+}
+
+/** Render a parsed TypeNode to a colored string (e.g. `int`, `Point`, `int[]`). */
+function renderType(type: TypeNode, ctx: Ctx): string {
+    switch (type.kind) {
+        case TypeNodeKind.Array:
+            return `${renderType(type.element, ctx)}${DIM}[]${R}`
+        case TypeNodeKind.Name:
+            if (type.resolved !== TypeKind.Unknown) {
+                return `${C.teal}${TYPE_NAME[type.resolved] ?? TypeKind[type.resolved]}${R}`
+            }
+            // a written user-defined type, or an un-annotated inference slot
+            return type.id >= 0 ? resolveType(type.id, ctx) : `${DIM}inferred${R}`
+    }
+}
+
+/** Resolve a function id to a name via the symbol table (falls back to fn#id). */
+function resolveFunction(id: number, ctx: Ctx): string {
+    return ctx.symbolTable?.functions?.get(id)
+        ?? ctx.symbolTable?.variables?.get(id)
+        ?? `${DIM}fn#${id}${R}`
 }
 
 /** Resolve a string pool id (falls back to str#id). */
@@ -240,7 +276,7 @@ function renderNode(node: Node, ctx: Ctx): Line[] {
             const mods = [...d.modifiers].map(m => Modifier[m]).join(", ") || "none"
             lines.push(header(typeName, undefined, ctx))
             lines.push(leaf("var",      resolveVar(d.variableId, ctx),    deeper(ctx)))
-            lines.push(leaf("varType",  resolveType(d.variableType, ctx), deeper(ctx)))
+            lines.push(leaf("varType",  renderType(d.variableType, ctx),  deeper(ctx)))
             lines.push(leaf("mods",     `${DIM}${mods}${R}`,              deeper(ctx)))
             if (d.definition) {
                 lines.push({ indent: deeper(ctx).depth, text: `${DIM}definition:${R}` })
@@ -365,8 +401,8 @@ function renderNode(node: Node, ctx: Ctx): Line[] {
             const d = node.data as EnumNode
             const mods = [...d.modifiers].map(m => Modifier[m]).join(", ") || "none"
             lines.push(header(typeName, resolveType(d.id, ctx), ctx))
-            lines.push(leaf("type", resolveType(d.type, ctx), deeper(ctx)))
-            lines.push(leaf("mods", `${DIM}${mods}${R}`,       deeper(ctx)))
+            lines.push(leaf("type", renderType(d.type, ctx), deeper(ctx)))
+            lines.push(leaf("mods", `${DIM}${mods}${R}`,      deeper(ctx)))
             for (const option of d.options) {
                 if (option.value) {
                     lines.push({ indent: deeper(ctx).depth, text: `${DIM}option:${R} ${resolveVar(option.id, ctx)} ${DIM}=${R}` })
@@ -470,6 +506,47 @@ function renderNode(node: Node, ctx: Ctx): Line[] {
             lines.push(header(typeName, undefined, ctx))
             if (d.value) {
                 lines.push(...recurse(d.value, deeper(ctx)))
+            }
+            break
+        }
+
+        // ── FunctionNode ─────────────────────────────────────────────────────
+        case NodeType.FunctionNode: {
+            const d = node.data as FunctionNode
+            const mods = [...d.modifiers].map(m => Modifier[m]).join(", ") || "none"
+            lines.push(header(typeName, resolveFunction(d.id, ctx), ctx))
+            lines.push(leaf("returns", renderType(d.returnType, ctx), deeper(ctx)))
+            lines.push(leaf("mods",    `${DIM}${mods}${R}`,           deeper(ctx)))
+            if (d.parameters.length) {
+                lines.push({ indent: deeper(ctx).depth, text: `${DIM}params:${R}` })
+                for (const param of d.parameters) {
+                    lines.push(leaf(
+                        "param",
+                        `${resolveVar(param.id, ctx)} ${DIM}:${R} ${renderType(param.type, ctx)}`,
+                        { ...deeper(ctx), depth: deeper(ctx).depth + 1 }
+                    ))
+                }
+            }
+            lines.push({ indent: deeper(ctx).depth, text: `${DIM}body:${R}` })
+            lines.push(...recurse(d.body, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            break
+        }
+
+        // ── StructNode ───────────────────────────────────────────────────────
+        case NodeType.StructNode: {
+            const d = node.data as StructNode
+            const mods = [...d.modifiers].map(m => Modifier[m]).join(", ") || "none"
+            lines.push(header(typeName, resolveType(d.id, ctx), ctx))
+            lines.push(leaf("mods", `${DIM}${mods}${R}`, deeper(ctx)))
+            if (d.fields.length) {
+                lines.push({ indent: deeper(ctx).depth, text: `${DIM}fields:${R}` })
+                for (const field of d.fields) {
+                    lines.push(leaf(
+                        "field",
+                        `${resolveVar(field.id, ctx)} ${DIM}:${R} ${renderType(field.type, ctx)}`,
+                        { ...deeper(ctx), depth: deeper(ctx).depth + 1 }
+                    ))
+                }
             }
             break
         }

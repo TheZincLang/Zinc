@@ -7,6 +7,7 @@ export const DEFAULT_IMPORTS: Set<string> = new Set(["web utilities", "fs", "nod
 
 export const KEYWORDS_MAP = new Map<string, TokenType>([
     ["fn", TokenType.Fn],
+    ["func", TokenType.Fn],
     ["function", TokenType.Fn],
     ["let", TokenType.Let],
     ["if", TokenType.If],
@@ -16,6 +17,8 @@ export const KEYWORDS_MAP = new Map<string, TokenType>([
     ["async", TokenType.Async],
     ["const", TokenType.Const],
     ["enum", TokenType.Enum],
+    ["struct", TokenType.Struct],
+    ["class", TokenType.Struct],
     ["switch", TokenType.Switch],
     ["case", TokenType.Case],
     ["default", TokenType.Default],
