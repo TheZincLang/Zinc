@@ -48,6 +48,12 @@ export enum Modifier {
     async,
     array,
     export,
+    // member-level access / dispatch modifiers (structs & classes)
+    public,
+    private,
+    protected,
+    static,
+    override,
 }
 
 export enum TypeNodeKind {
@@ -101,6 +107,9 @@ export type Node =
     | {type: NodeType.ReturnNode, data: ReturnNode}
     | {type: NodeType.FunctionNode, data: FunctionNode}
     | {type: NodeType.StructNode, data: StructNode}
+    | {type: NodeType.ClassNode, data: ClassNode}
+    | {type: NodeType.FieldNode, data: FieldNode}
+    | {type: NodeType.ConstructorNode, data: ConstructorNode}
 
 export enum NodeType {
     LetNode,
@@ -128,6 +137,9 @@ export enum NodeType {
     ReturnNode,
     FunctionNode,
     StructNode,
+    ClassNode,
+    FieldNode,
+    ConstructorNode,
 }
 
 export interface LetNode {
@@ -339,13 +351,50 @@ export interface FunctionNode {
     body: Node
 }
 
-export interface StructField {
+/**
+ * A field declaration inside a struct or class body.
+ * `modifiers` carries member-level access modifiers (`pub`/`priv`/`static`).
+ */
+export interface FieldNode {
+    modifiers: Set<Modifier>
     id: number
     type: TypeNode
 }
 
+/**
+ * A class constructor (`init`). Has no name and no return type; it implicitly
+ * operates on the instance under construction.
+ */
+export interface ConstructorNode {
+    modifiers: Set<Modifier>
+    parameters: FunctionParameter[]
+    body: Node
+}
+
+/**
+ * A struct declaration. `fields` holds the body members: `FieldNode` field
+ * declarations and `FunctionNode` methods (structs support methods but not
+ * constructors or inheritance).
+ */
 export interface StructNode {
     id: number
     modifiers: Set<Modifier>
-    fields: StructField[]
+    fields: Node[]
+}
+
+/**
+ * A class declaration. Inheritance is split per the COOP paradigm:
+ *   - `superClass`         — single `extends` target, or null
+ *   - `implementsTargets`  — `implements` clause targets (classes or interfaces)
+ *   - `owns` / `serves`    — protected-access clauses (see lang/owns-serves.md)
+ * `members` holds `FieldNode`, `FunctionNode` (methods) and `ConstructorNode`s.
+ */
+export interface ClassNode {
+    modifiers: Set<Modifier>
+    id: number
+    superClass: number | null
+    implementsTargets: number[]
+    owns: number[]
+    serves: number | null
+    members: Node[]
 }

@@ -46,6 +46,7 @@ export enum TypeKind {
     Enum,
     Interface,
     TypeAlias,
+    Union,          // T | U | ... — tagged union, TS syntax, C++ variant layout
 
     // callables
     Function,

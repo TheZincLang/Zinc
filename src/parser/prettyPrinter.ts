@@ -27,7 +27,7 @@ import {
     VariableNode, CallNode, StringTemplateNode,
     EnumNode, CodeBlockNode, IfNode, SwitchNode, SwitchCaseNode,
     SwitchDefaultNode, AssignmentNode, WhileNode, ReturnNode, FunctionNode,
-    StructNode, TypeNode, TypeNodeKind,
+    StructNode, ClassNode, FieldNode, ConstructorNode, TypeNode, TypeNodeKind,
     Modifier, ExpressionOperator, BinaryExpressionOperator,
     BitwiseOperator, UnaryOperator, PostfixOperator, AssignmentOperator,
     LiteralType, StringTemplatePartType,
@@ -82,6 +82,9 @@ const NODE_COLORS: Partial<Record<string, string>> = {
     ReturnNode:         C.red,
     FunctionNode:       C.magenta,
     StructNode:         C.magenta,
+    ClassNode:          C.magenta,
+    FieldNode:          C.green,
+    ConstructorNode:    C.magenta,
 }
 
 // ─── SYMBOL TABLE TYPES ───────────────────────────────────────────────────────
@@ -539,15 +542,71 @@ function renderNode(node: Node, ctx: Ctx): Line[] {
             lines.push(header(typeName, resolveType(d.id, ctx), ctx))
             lines.push(leaf("mods", `${DIM}${mods}${R}`, deeper(ctx)))
             if (d.fields.length) {
-                lines.push({ indent: deeper(ctx).depth, text: `${DIM}fields:${R}` })
-                for (const field of d.fields) {
+                lines.push({ indent: deeper(ctx).depth, text: `${DIM}members:${R}` })
+                for (const member of d.fields) {
+                    lines.push(...recurse(member, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+                }
+            }
+            break
+        }
+
+        // ── ClassNode ────────────────────────────────────────────────────────
+        case NodeType.ClassNode: {
+            const d = node.data as ClassNode
+            const mods = [...d.modifiers].map(m => Modifier[m]).join(", ") || "none"
+            lines.push(header(typeName, resolveType(d.id, ctx), ctx))
+            lines.push(leaf("mods", `${DIM}${mods}${R}`, deeper(ctx)))
+            if (d.superClass !== null) {
+                lines.push(leaf("extends", resolveType(d.superClass, ctx), deeper(ctx)))
+            }
+            if (d.implementsTargets.length) {
+                lines.push(leaf("implements", d.implementsTargets.map(id => resolveType(id, ctx)).join(`${DIM}, ${R}`), deeper(ctx)))
+            }
+            if (d.owns.length) {
+                lines.push(leaf("owns", d.owns.map(id => resolveType(id, ctx)).join(`${DIM}, ${R}`), deeper(ctx)))
+            }
+            if (d.serves !== null) {
+                lines.push(leaf("serves", resolveType(d.serves, ctx), deeper(ctx)))
+            }
+            if (d.members.length) {
+                lines.push({ indent: deeper(ctx).depth, text: `${DIM}members:${R}` })
+                for (const member of d.members) {
+                    lines.push(...recurse(member, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+                }
+            }
+            break
+        }
+
+        // ── FieldNode ────────────────────────────────────────────────────────
+        case NodeType.FieldNode: {
+            const d = node.data as FieldNode
+            const mods = [...d.modifiers].map(m => Modifier[m]).join(", ")
+            lines.push(header(
+                typeName,
+                `${resolveVar(d.id, ctx)} ${DIM}:${R} ${renderType(d.type, ctx)}${mods ? `  ${DIM}[${mods}]${R}` : ""}`,
+                ctx
+            ))
+            break
+        }
+
+        // ── ConstructorNode ──────────────────────────────────────────────────
+        case NodeType.ConstructorNode: {
+            const d = node.data as ConstructorNode
+            const mods = [...d.modifiers].map(m => Modifier[m]).join(", ") || "none"
+            lines.push(header(typeName, undefined, ctx))
+            lines.push(leaf("mods", `${DIM}${mods}${R}`, deeper(ctx)))
+            if (d.parameters.length) {
+                lines.push({ indent: deeper(ctx).depth, text: `${DIM}params:${R}` })
+                for (const param of d.parameters) {
                     lines.push(leaf(
-                        "field",
-                        `${resolveVar(field.id, ctx)} ${DIM}:${R} ${renderType(field.type, ctx)}`,
+                        "param",
+                        `${resolveVar(param.id, ctx)} ${DIM}:${R} ${renderType(param.type, ctx)}`,
                         { ...deeper(ctx), depth: deeper(ctx).depth + 1 }
                     ))
                 }
             }
+            lines.push({ indent: deeper(ctx).depth, text: `${DIM}body:${R}` })
+            lines.push(...recurse(d.body, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
             break
         }
 

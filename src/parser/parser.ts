@@ -16,7 +16,6 @@ import {
     Program,
     StackEntry,
     StringTemplatePart,
-    StructField,
     TypeNode,
     UnaryOperator
 } from "./ParserTypes.ts"
@@ -27,9 +26,12 @@ import {
     _bitwise,
     _break,
     _call,
+    _class,
     _codeBlock,
+    _constructor,
     _continue,
     _enum,
+    _field,
     _fieldAccess,
     _function,
     _if,
@@ -877,53 +879,9 @@ export class Parser{
             })
         }
 
-        const fields: StructField[] = []
-        const fieldIds = new Set<number>()
-        while(!this.match(TokenType.StackClose)){
-            if(this.match(TokenType.EOF)){
-                throw new ParserError({
-                    type: ParserErrorType.UnexpectedEndOfFile,
-                    message: "missing } in struct body",
-                    line: this.currentToken.line,
-                    column: this.currentToken.column,
-                    filePath: this.fileManager.lexer.getPath()
-                })
-            }
-            const fieldToken = this.getToken()
-            if(fieldToken.type !== TokenType.Identifier){
-                throw new ParserError({
-                    type: ParserErrorType.UnexpectedToken,
-                    message: "expected a field name",
-                    line: fieldToken.line,
-                    column: fieldToken.column,
-                    filePath: this.fileManager.lexer.getPath()
-                })
-            }
-            const fieldId = fieldToken.data
-            if(!this.match(TokenType.Colon)){
-                throw new ParserError({
-                    type: ParserErrorType.InvalidSyntax,
-                    message: "expected : after field name",
-                    line: this.currentToken.line,
-                    column: this.currentToken.column,
-                    filePath: this.fileManager.lexer.getPath()
-                })
-            }
-            const type = this.parseType()
-            if(fieldIds.has(fieldId)){
-                throw new ParserError({
-                    type: ParserErrorType.InvalidSyntax,
-                    message: "duplicate field name",
-                    line: fieldToken.line,
-                    column: fieldToken.column,
-                    filePath: this.fileManager.lexer.getPath()
-                })
-            }
-            fieldIds.add(fieldId)
-            fields.push({id: fieldId, type})
-            this.match(TokenType.Comma)
-            this.match(TokenType.Semicolon)
-        }
+        // structs support fields and methods, but not constructors or
+        // inheritance clauses (see lang/structs.md).
+        const fields = this.parseMemberBlock("struct body", false)
 
         this.declaredTypes.add(structId)
 
@@ -934,7 +892,16 @@ export class Parser{
         })
     }
 
-    parseFunction(): Node {
+    protected parseClass(): Node {
+        if(!this.isGlobalScope()){
+            throw new ParserError({
+                type: ParserErrorType.InvalidDeclarationScope,
+                line: this.currentToken.line,
+                column: this.currentToken.column,
+                filePath: this.fileManager.lexer.getPath()
+            })
+        }
+
         const currentModifiers = new Set<Modifier>(this.currentModifiers)
         this.currentModifiers.clear()
 
@@ -942,18 +909,235 @@ export class Parser{
         if(nameToken.type !== TokenType.Identifier){
             throw new ParserError({
                 type: ParserErrorType.UnexpectedToken,
-                message: "expected a function name",
+                message: "expected a class name",
                 line: nameToken.line,
                 column: nameToken.column,
                 filePath: this.fileManager.lexer.getPath()
             })
         }
-        const functionId = nameToken.data
+        const classId = nameToken.data
 
+        // Inheritance clauses, in fixed order: extends, implements, owns, serves.
+        let superClass: number | null = null
+        if(this.match(TokenType.Extends)){
+            superClass = this.expectIdentifier("expected a class name after extends")
+        }
+
+        let implementsTargets: number[] = []
+        if(this.match(TokenType.Implements)){
+            implementsTargets = this.parseIdentifierList("expected a type name after implements")
+        }
+
+        let owns: number[] = []
+        if(this.match(TokenType.Owns)){
+            owns = this.parseIdentifierList("expected a type name after owns")
+        }
+
+        let serves: number | null = null
+        if(this.match(TokenType.Serves)){
+            serves = this.expectIdentifier("expected exactly one target after serves")
+        }
+
+        if(!this.match(TokenType.StackOpen)){
+            throw new ParserError({
+                type: ParserErrorType.InvalidSyntax,
+                message: "missing { before class body",
+                line: this.currentToken.line,
+                column: this.currentToken.column,
+                filePath: this.fileManager.lexer.getPath()
+            })
+        }
+
+        // classes additionally support `init` constructors.
+        const members = this.parseMemberBlock("class body", true)
+
+        this.declaredTypes.add(classId)
+
+        return _class({
+            id: classId,
+            modifiers: currentModifiers,
+            superClass,
+            implementsTargets,
+            owns,
+            serves,
+            members
+        })
+    }
+
+    // Consume the `{ ... }` body of a struct or class (the opening `{` must
+    // already have been matched) and return the parsed member nodes. When
+    // `allowConstructor` is false, `init` constructors are rejected.
+    protected parseMemberBlock(context: string, allowConstructor: boolean): Node[] {
+        const members: Node[] = []
+        const fieldIds = new Set<number>()
+        while(!this.match(TokenType.StackClose)){
+            if(this.match(TokenType.EOF)){
+                throw new ParserError({
+                    type: ParserErrorType.UnexpectedEndOfFile,
+                    message: `missing } in ${context}`,
+                    line: this.currentToken.line,
+                    column: this.currentToken.column,
+                    filePath: this.fileManager.lexer.getPath()
+                })
+            }
+            const member = this.parseMember(allowConstructor)
+            if(member.type === NodeType.FieldNode){
+                if(fieldIds.has(member.data.id)){
+                    throw new ParserError({
+                        type: ParserErrorType.InvalidSyntax,
+                        message: "duplicate field name",
+                        line: this.currentToken.line,
+                        column: this.currentToken.column,
+                        filePath: this.fileManager.lexer.getPath()
+                    })
+                }
+                fieldIds.add(member.data.id)
+            }
+            members.push(member)
+        }
+        return members
+    }
+
+    // Parse a single struct/class member: an optional run of access modifiers
+    // followed by a field declaration, a method, or (classes only) a constructor.
+    protected parseMember(allowConstructor: boolean): Node {
+        const modifiers = new Set<Modifier>()
+        let modifier: Modifier | undefined
+        while((modifier = this.peekMemberModifier()) !== undefined){
+            this.getToken()
+            modifiers.add(modifier)
+        }
+
+        switch(this.peek().type){
+            case TokenType.Fn: {
+                this.getToken()
+                return this.parseMethod(modifiers)
+            }
+            case TokenType.Init: {
+                this.getToken()
+                if(!allowConstructor){
+                    throw new ParserError({
+                        type: ParserErrorType.InvalidSyntax,
+                        message: "constructors (init) are only allowed in classes",
+                        line: this.currentToken.line,
+                        column: this.currentToken.column,
+                        filePath: this.fileManager.lexer.getPath()
+                    })
+                }
+                return this.parseConstructor(modifiers)
+            }
+            case TokenType.Identifier:
+                return this.parseFieldDeclaration(modifiers)
+            default: {
+                const bad = this.getToken()
+                throw new ParserError({
+                    type: ParserErrorType.UnexpectedToken,
+                    message: "expected a field, method, or constructor",
+                    line: bad.line,
+                    column: bad.column,
+                    filePath: this.fileManager.lexer.getPath()
+                })
+            }
+        }
+    }
+
+    // Map a member-modifier keyword token to its Modifier, or undefined if the
+    // next token is not a member modifier.
+    protected peekMemberModifier(): Modifier | undefined {
+        switch(this.peek().type){
+            case TokenType.Public:     return Modifier.public
+            case TokenType.Private:    return Modifier.private
+            case TokenType.Protected:  return Modifier.protected
+            case TokenType.Static:     return Modifier.static
+            case TokenType.Override:   return Modifier.override
+            default:                 return undefined
+        }
+    }
+
+    protected parseFieldDeclaration(modifiers: Set<Modifier>): Node {
+        const fieldToken = this.getToken()
+        const fieldId = fieldToken.data
+        if(!this.match(TokenType.Colon)){
+            throw new ParserError({
+                type: ParserErrorType.InvalidSyntax,
+                message: "expected : after field name",
+                line: this.currentToken.line,
+                column: this.currentToken.column,
+                filePath: this.fileManager.lexer.getPath()
+            })
+        }
+        const type = this.parseType()
+        this.match(TokenType.Comma)
+        this.match(TokenType.Semicolon)
+        return _field({modifiers, id: fieldId, type})
+    }
+
+    protected parseMethod(modifiers: Set<Modifier>): Node {
+        const nameToken = this.getToken()
+        if(nameToken.type !== TokenType.Identifier){
+            throw new ParserError({
+                type: ParserErrorType.UnexpectedToken,
+                message: "expected a method name",
+                line: nameToken.line,
+                column: nameToken.column,
+                filePath: this.fileManager.lexer.getPath()
+            })
+        }
+        const methodId = nameToken.data
+
+        const parameters = this.parseParameterList()
+
+        let returnType: TypeNode = _nameType(-1, TypeKind.Void)
+        if(this.match(TokenType.Colon)){
+            returnType = this.parseType()
+        }
+
+        if(!this.match(TokenType.StackOpen)){
+            throw new ParserError({
+                type: ParserErrorType.InvalidSyntax,
+                message: "missing { before method body",
+                line: this.currentToken.line,
+                column: this.currentToken.column,
+                filePath: this.fileManager.lexer.getPath()
+            })
+        }
+
+        this.declaredFunctions.add(methodId)
+        const body = this.parseCodeBlock(parameters.map(p => p.id))
+
+        return _function({
+            id: methodId,
+            modifiers,
+            parameters,
+            returnType,
+            body
+        })
+    }
+
+    protected parseConstructor(modifiers: Set<Modifier>): Node {
+        const parameters = this.parseParameterList()
+
+        if(!this.match(TokenType.StackOpen)){
+            throw new ParserError({
+                type: ParserErrorType.InvalidSyntax,
+                message: "missing { before constructor body",
+                line: this.currentToken.line,
+                column: this.currentToken.column,
+                filePath: this.fileManager.lexer.getPath()
+            })
+        }
+
+        const body = this.parseCodeBlock(parameters.map(p => p.id))
+
+        return _constructor({modifiers, parameters, body})
+    }
+
+    // Read a `( <param> {"," <param>} )` parameter list, consuming both parens.
+    protected parseParameterList(): FunctionParameter[] {
         if(!this.match(TokenType.LParen)){
             throw new ParserError({
                 type: ParserErrorType.InvalidSyntax,
-                message: "missing ( after function name",
+                message: "missing ( before parameter list",
                 line: this.currentToken.line,
                 column: this.currentToken.column,
                 filePath: this.fileManager.lexer.getPath()
@@ -966,7 +1150,7 @@ export class Parser{
             if(this.match(TokenType.EOF)){
                 throw new ParserError({
                     type: ParserErrorType.UnexpectedEndOfFile,
-                    message: "missing ) in function parameters",
+                    message: "missing ) in parameter list",
                     line: this.currentToken.line,
                     column: this.currentToken.column,
                     filePath: this.fileManager.lexer.getPath()
@@ -1006,6 +1190,50 @@ export class Parser{
             parameters.push({id: paramId, type})
             this.match(TokenType.Comma)
         }
+        return parameters
+    }
+
+    // Read a single identifier, throwing `message` if the next token isn't one.
+    protected expectIdentifier(message: string): number {
+        const token = this.getToken()
+        if(token.type !== TokenType.Identifier){
+            throw new ParserError({
+                type: ParserErrorType.UnexpectedToken,
+                message,
+                line: token.line,
+                column: token.column,
+                filePath: this.fileManager.lexer.getPath()
+            })
+        }
+        return token.data
+    }
+
+    // Read a comma-separated list of one or more identifiers.
+    protected parseIdentifierList(message: string): number[] {
+        const ids: number[] = [this.expectIdentifier(message)]
+        while(this.match(TokenType.Comma)){
+            ids.push(this.expectIdentifier(message))
+        }
+        return ids
+    }
+
+    parseFunction(): Node {
+        const currentModifiers = new Set<Modifier>(this.currentModifiers)
+        this.currentModifiers.clear()
+
+        const nameToken = this.getToken()
+        if(nameToken.type !== TokenType.Identifier){
+            throw new ParserError({
+                type: ParserErrorType.UnexpectedToken,
+                message: "expected a function name",
+                line: nameToken.line,
+                column: nameToken.column,
+                filePath: this.fileManager.lexer.getPath()
+            })
+        }
+        const functionId = nameToken.data
+
+        const parameters = this.parseParameterList()
 
         let returnType: TypeNode = _nameType(-1, TypeKind.Void)
         if(this.match(TokenType.Colon)){
@@ -1024,7 +1252,7 @@ export class Parser{
 
         this.declaredFunctions.add(functionId)
 
-        const body = this.parseCodeBlock([...parameterIds])
+        const body = this.parseCodeBlock(parameters.map(p => p.id))
 
         return _function({
             id: functionId,
@@ -1078,6 +1306,10 @@ export class Parser{
             case TokenType.Struct: {
                 this.getToken()
                 return this.parseStruct()
+            }
+            case TokenType.Class: {
+                this.getToken()
+                return this.parseClass()
             }
             case TokenType.Export: {
                 this.getToken()

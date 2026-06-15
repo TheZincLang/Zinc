@@ -15,16 +15,44 @@ enum Direction: int {
     West,
 }
 
-/* ── structs / classes (global scope only) ────────────────────────────── */
+/* ── structs (fields + methods, no constructors/inheritance) ──────────── */
 struct Point {
     x: int,
     y: int,
+
+    fn manhattan(): int {
+        return x + y
+    }
 }
 
-class Rect {
+/* ── classes (inheritance clauses, members, constructors, modifiers) ──── */
+class Shape {
+    public name: string
+    private sides: int
+
+    init(name: string, sides: int) {
+        self.name = name
+        self.sides = sides
+    }
+
+    public fn describe(): string {
+        return name
+    }
+}
+
+class Rect extends Shape implements Drawable, Sized owns Point serves Canvas {
     topLeft: Point
     size: Point
-    label: string[]
+    static label: string[]
+
+    init(topLeft: Point, size: Point) {
+        self.topLeft = topLeft
+        self.size = size
+    }
+
+    override public fn describe(): string {
+        return "rect"
+    }
 }
 
 /* ── variable declarations ────────────────────────────────────────────── */

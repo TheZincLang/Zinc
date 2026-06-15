@@ -2,8 +2,11 @@ import {
     AssignmentOperator,
     BinaryExpressionOperator,
     BitwiseOperator,
+    ClassNode,
+    ConstructorNode,
     EnumNode,
     ExpressionOperator,
+    FieldNode,
     FunctionNode,
     LiteralType,
     Node,
@@ -115,6 +118,18 @@ export function _function(data: FunctionNode): Node {
 
 export function _struct(data: StructNode): Node {
     return {type: NodeType.StructNode, data}
+}
+
+export function _class(data: ClassNode): Node {
+    return {type: NodeType.ClassNode, data}
+}
+
+export function _field(data: FieldNode): Node {
+    return {type: NodeType.FieldNode, data}
+}
+
+export function _constructor(data: ConstructorNode): Node {
+    return {type: NodeType.ConstructorNode, data}
 }
 
 export function _nameType(id: number, resolved: TypeKind): TypeNode {
