@@ -26,11 +26,11 @@ import {
     UnaryNode, PostfixNode, FieldAccessNode, LiteralNode,
     VariableNode, CallNode, StringTemplateNode,
     EnumNode, CodeBlockNode, IfNode, SwitchNode, SwitchCaseNode,
-    SwitchDefaultNode, AssignmentNode, WhileNode, ReturnNode, FunctionNode,
+    SwitchDefaultNode, AssignmentNode, WhileNode, LoopNode, LambdaNode, ArrayLiteralNode, ReturnNode, FunctionNode,
     StructNode, ClassNode, FieldNode, ConstructorNode, TypeNode, TypeNodeKind,
     Modifier, ExpressionOperator, BinaryExpressionOperator,
     BitwiseOperator, UnaryOperator, PostfixOperator, AssignmentOperator,
-    LiteralType, StringTemplatePartType,
+    LiteralType, StringTemplatePartType, CaptureModifier,
 } from "./ParserTypes.ts"
 import {TypeKind} from "../global/types/globalTypes.ts"
 
@@ -77,6 +77,9 @@ const NODE_COLORS: Partial<Record<string, string>> = {
     SwitchDefaultNode:  C.cyan,
     AssignmentNode:     C.magenta,
     WhileNode:          C.blue,
+    LoopNode:           C.blue,
+    LambdaNode:         C.magenta,
+    ArrayLiteralNode:   C.yellow,
     BreakNode:          C.red,
     ContinueNode:       C.red,
     ReturnNode:         C.red,
@@ -493,6 +496,53 @@ function renderNode(node: Node, ctx: Ctx): Line[] {
             lines.push(...recurse(d.condition, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
             lines.push({ indent: deeper(ctx).depth, text: `${DIM}body:${R}` })
             lines.push(...recurse(d.body, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            break
+        }
+
+        // ── LoopNode ─────────────────────────────────────────────────────────
+        case NodeType.LoopNode: {
+            const d = node.data as LoopNode
+            lines.push(header(typeName, undefined, ctx))
+            lines.push({ indent: deeper(ctx).depth, text: `${DIM}body:${R}` })
+            lines.push(...recurse(d.body, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            break
+        }
+
+        // ── LambdaNode ───────────────────────────────────────────────────────
+        case NodeType.LambdaNode: {
+            const d = node.data as LambdaNode
+            lines.push(header(typeName, undefined, ctx))
+            lines.push(leaf("returns", renderType(d.returnType, ctx), deeper(ctx)))
+            if (d.captures.length) {
+                lines.push({ indent: deeper(ctx).depth, text: `${DIM}captures:${R}` })
+                for (const cap of d.captures) {
+                    const modName = CaptureModifier[cap.modifier]
+                    const target = cap.variableId === null ? "*" : resolveVar(cap.variableId, ctx)
+                    lines.push(leaf("capture", `${DIM}${modName}${R} ${target}`, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+                }
+            }
+            if (d.parameters.length) {
+                lines.push({ indent: deeper(ctx).depth, text: `${DIM}params:${R}` })
+                for (const param of d.parameters) {
+                    lines.push(leaf(
+                        "param",
+                        `${resolveVar(param.id, ctx)} ${DIM}:${R} ${renderType(param.type, ctx)}`,
+                        { ...deeper(ctx), depth: deeper(ctx).depth + 1 }
+                    ))
+                }
+            }
+            lines.push({ indent: deeper(ctx).depth, text: `${DIM}body:${R}` })
+            lines.push(...recurse(d.body, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            break
+        }
+
+        // ── ArrayLiteralNode ─────────────────────────────────────────────────
+        case NodeType.ArrayLiteralNode: {
+            const d = node.data as ArrayLiteralNode
+            lines.push(header(typeName, `${DIM}(${d.elements.length} element(s))${R}`, ctx))
+            for (const element of d.elements) {
+                lines.push(...recurse(element, deeper(ctx)))
+            }
             break
         }
 

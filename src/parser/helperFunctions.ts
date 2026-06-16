@@ -8,6 +8,7 @@ import {
     ExpressionOperator,
     FieldNode,
     FunctionNode,
+    LambdaNode,
     LiteralType,
     Node,
     NodeType,
@@ -98,6 +99,18 @@ export function _assignment(op: AssignmentOperator, target: Node, value: Node): 
 
 export function _while(condition: Node, body: Node): Node {
     return {type: NodeType.WhileNode, data: {condition: condition, body: body}}
+}
+
+export function _loop(body: Node): Node {
+    return {type: NodeType.LoopNode, data: {body}}
+}
+
+export function _lambda(data: LambdaNode): Node {
+    return {type: NodeType.LambdaNode, data}
+}
+
+export function _arrayLiteral(elements: Node[]): Node {
+    return {type: NodeType.ArrayLiteralNode, data: {elements}}
 }
 
 export function _break(): Node {

@@ -98,6 +98,7 @@ export enum TokenType {
     Default,
     For,
     While,
+    Loop,
     Break,
     Continue,
     Return,

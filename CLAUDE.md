@@ -64,3 +64,5 @@ compile(path)
 Declared functions populate `symbolTable.functions`; declared types (enums + structs) populate `symbolTable.types`, so type annotations and enum/struct headers pretty-print by name instead of `type#N`.
 
 **Not yet implemented:** `for` loops and `import` statements (parser throws `"not implemented yet"` for these tokens).
+
+**Recently added:** `loop` (infinite loop, `loop { ... }`); lambda/closure expressions (`[captures](params) => { body }` or `(params) => { body }` with optional capture list supporting `copy`/`ref`/`borrow`/`bor`/`move` modifiers and `*` wildcard); and array literals (`[a, b, c]`). Array literals are disambiguated from indexing by position — a leading `[` whose matching `]` is followed by `(` is a lambda capture list, otherwise it is an array literal; indexing (`expr[i]`) is handled in `parsePostfix` after a primary.

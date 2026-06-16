@@ -3,6 +3,8 @@ import {
     AssignmentOperator,
     BinaryExpressionOperator,
     BitwiseOperator,
+    CaptureEntry,
+    CaptureModifier,
     EnumOptionNode,
     ExpressionOperator,
     FunctionParameter,
@@ -20,6 +22,7 @@ import {
     UnaryOperator
 } from "./ParserTypes.ts"
 import {
+    _arrayLiteral,
     _arrayType,
     _assignment,
     _binary,
@@ -35,7 +38,9 @@ import {
     _fieldAccess,
     _function,
     _if,
+    _lambda,
     _literal,
+    _loop,
     _math,
     _nameType,
     _postfix,
@@ -54,6 +59,14 @@ import {
 import {SymbolTable} from "./prettyPrinter.ts";
 import {PRIMITIVE_TYPES, TypeKind} from "../global/types/globalTypes.ts";
 import {FileManager} from "../file/fileManager/fileManager.ts";
+
+const CAPTURE_MODIFIER_NAMES = new Map<string, CaptureModifier>([
+    ["copy",   CaptureModifier.copy],
+    ["ref",    CaptureModifier.ref],
+    ["borrow", CaptureModifier.borrow],
+    ["bor",    CaptureModifier.borrow],
+    ["move",   CaptureModifier.move],
+])
 
 export class Parser{
     protected tokens: Token[]
@@ -131,6 +144,10 @@ export class Parser{
 
     protected peek(){
         return this.tokens[this.currentTokenIndex + 1]
+    }
+
+    protected peekAt(offset: number): Token {
+        return this.tokens[this.currentTokenIndex + offset]
     }
 
     protected parseLet(): Node{
@@ -333,13 +350,18 @@ export class Parser{
 
     parseEquality(): Node {
         let left = this.parseComparison()
-        while (true){
-            if(this.match(TokenType.Equal)){
-                left = _binary(BinaryExpressionOperator.Equal, left, this.parseComparison())
-            } else if (this.match(TokenType.NotEqual)){
-                left = _binary(BinaryExpressionOperator.NotEqual, left, this.parseComparison())
-            } else {
-                break
+        loop: while (true){
+            switch (this.peek().type){
+                case TokenType.Equal:
+                    this.getToken()
+                    left = _binary(BinaryExpressionOperator.Equal, left, this.parseComparison())
+                    break
+                case TokenType.NotEqual:
+                    this.getToken()
+                    left = _binary(BinaryExpressionOperator.NotEqual, left, this.parseComparison())
+                    break
+                default:
+                    break loop
             }
         }
         return left
@@ -347,17 +369,26 @@ export class Parser{
 
     parseComparison(): Node {
         let left = this.parseBitwiseOr()
-        while (true){
-            if(this.match(TokenType.LessThan)){
-                left = _binary(BinaryExpressionOperator.LessThan, left, this.parseBitwiseOr())
-            } else if (this.match(TokenType.LessThanOrEqual)){
-                left = _binary(BinaryExpressionOperator.LessThanOrEqual, left, this.parseBitwiseOr())
-            } else if (this.match(TokenType.MoreThan)){
-                left = _binary(BinaryExpressionOperator.MoreThan, left, this.parseBitwiseOr())
-            } else if (this.match(TokenType.MoreThanOrEqual)){
-                left = _binary(BinaryExpressionOperator.MoreThanOrEqual, left, this.parseBitwiseOr())
-            } else {
-                break
+        loop: while (true){
+            switch (this.peek().type){
+                case TokenType.LessThan:
+                    this.getToken()
+                    left = _binary(BinaryExpressionOperator.LessThan, left, this.parseBitwiseOr())
+                    break
+                case TokenType.LessThanOrEqual:
+                    this.getToken()
+                    left = _binary(BinaryExpressionOperator.LessThanOrEqual, left, this.parseBitwiseOr())
+                    break
+                case TokenType.MoreThan:
+                    this.getToken()
+                    left = _binary(BinaryExpressionOperator.MoreThan, left, this.parseBitwiseOr())
+                    break
+                case TokenType.MoreThanOrEqual:
+                    this.getToken()
+                    left = _binary(BinaryExpressionOperator.MoreThanOrEqual, left, this.parseBitwiseOr())
+                    break
+                default:
+                    break loop
             }
         }
         return left
@@ -392,13 +423,18 @@ export class Parser{
 
     parseShift(): Node {
         let left = this.parseTerm()
-        while (true){
-            if(this.match(TokenType.ShiftLeft)){
-                left = _bitwise(BitwiseOperator.ShiftLeft, left, this.parseTerm())
-            } else if (this.match(TokenType.ShiftRight)){
-                left = _bitwise(BitwiseOperator.ShiftRight, left, this.parseTerm())
-            } else {
-                break
+        loop: while (true){
+            switch (this.peek().type){
+                case TokenType.ShiftLeft:
+                    this.getToken()
+                    left = _bitwise(BitwiseOperator.ShiftLeft, left, this.parseTerm())
+                    break
+                case TokenType.ShiftRight:
+                    this.getToken()
+                    left = _bitwise(BitwiseOperator.ShiftRight, left, this.parseTerm())
+                    break
+                default:
+                    break loop
             }
         }
         return left
@@ -406,13 +442,18 @@ export class Parser{
 
     parseTerm(): Node {
         let left = this.parseFactor()
-        while (true){
-            if(this.match(TokenType.Plus)){
-                left = _math(ExpressionOperator.add, left, this.parseFactor())
-            } else if (this.match(TokenType.Minus)){
-                left = _math(ExpressionOperator.subtract, left, this.parseFactor())
-            } else {
-                break
+        loop: while (true){
+            switch (this.peek().type){
+                case TokenType.Plus:
+                    this.getToken()
+                    left = _math(ExpressionOperator.add, left, this.parseFactor())
+                    break
+                case TokenType.Minus:
+                    this.getToken()
+                    left = _math(ExpressionOperator.subtract, left, this.parseFactor())
+                    break
+                default:
+                    break loop
             }
         }
         return left
@@ -420,15 +461,22 @@ export class Parser{
 
     parseFactor(): Node {
         let left = this.parseExponent()
-        while (true){
-            if(this.match(TokenType.Star)){
-                left = _math(ExpressionOperator.multiply, left, this.parseExponent())
-            } else if (this.match(TokenType.Slash)){
-                left = _math(ExpressionOperator.divide, left, this.parseExponent())
-            } else if (this.match(TokenType.Modulo)){
-                left = _math(ExpressionOperator.modulus, left, this.parseExponent())
-            } else {
-                break
+        loop: while (true){
+            switch (this.peek().type){
+                case TokenType.Star:
+                    this.getToken()
+                    left = _math(ExpressionOperator.multiply, left, this.parseExponent())
+                    break
+                case TokenType.Slash:
+                    this.getToken()
+                    left = _math(ExpressionOperator.divide, left, this.parseExponent())
+                    break
+                case TokenType.Modulo:
+                    this.getToken()
+                    left = _math(ExpressionOperator.modulus, left, this.parseExponent())
+                    break
+                default:
+                    break loop
             }
         }
         return left
@@ -444,39 +492,53 @@ export class Parser{
     }
 
     parseUnary(): Node {
-        if(this.match(TokenType.Not)){
-            return _unary(UnaryOperator.booleanNot, this.parseUnary())
-        } else if (this.match(TokenType.Minus)){
-            return _unary(UnaryOperator.negative, this.parseUnary())
-        } else if (this.match(TokenType.Tilde)){
-            return _unary(UnaryOperator.bitwiseNot, this.parseUnary())
-        } else if (this.match(TokenType.Increment)){
-            return _unary(UnaryOperator.increment, this.parseUnary())
-        } else if (this.match(TokenType.Decrement)){
-            return _unary(UnaryOperator.decrement, this.parseUnary())
-        } else {
-            return this.parsePostfix()
+        switch (this.peek().type){
+            case TokenType.Not:
+                this.getToken()
+                return _unary(UnaryOperator.booleanNot, this.parseUnary())
+            case TokenType.Minus:
+                this.getToken()
+                return _unary(UnaryOperator.negative, this.parseUnary())
+            case TokenType.Tilde:
+                this.getToken()
+                return _unary(UnaryOperator.bitwiseNot, this.parseUnary())
+            case TokenType.Increment:
+                this.getToken()
+                return _unary(UnaryOperator.increment, this.parseUnary())
+            case TokenType.Decrement:
+                this.getToken()
+                return _unary(UnaryOperator.decrement, this.parseUnary())
+            default:
+                return this.parsePostfix()
         }
     }
 
     parsePostfix(): Node {
         let left = this.parsePrimary()
-        while (true){
-            if(this.match(TokenType.Increment)){
-                left = _postfix(PostfixOperator.increment, left)
-            } else if (this.match(TokenType.Decrement)){
-                left = _postfix(PostfixOperator.decrement, left)
-            } else if (this.match(TokenType.LParen)){
-                left = this.parseFunctionCall(left)
-            } else if(this.match(TokenType.LBrace)){
-                if(this.match(TokenType.RBrace)){
-                    throw new ParserError({
-                        type: ParserErrorType.InvalidSyntax,
-                        message: "expected index expression",
-                        line: this.currentToken.line,
-                        column: this.currentToken.column,
-                    })
-                } else {
+        loop: while (true){
+            switch (this.peek().type){
+                case TokenType.Increment:
+                    this.getToken()
+                    left = _postfix(PostfixOperator.increment, left)
+                    break
+                case TokenType.Decrement:
+                    this.getToken()
+                    left = _postfix(PostfixOperator.decrement, left)
+                    break
+                case TokenType.LParen:
+                    this.getToken()
+                    left = this.parseFunctionCall(left)
+                    break
+                case TokenType.LBrace: {
+                    this.getToken()
+                    if(this.match(TokenType.RBrace)){
+                        throw new ParserError({
+                            type: ParserErrorType.InvalidSyntax,
+                            message: "expected index expression",
+                            line: this.currentToken.line,
+                            column: this.currentToken.column,
+                        })
+                    }
                     left = _postfix(PostfixOperator.index, left, [this.parseExpression()])
                     if(!this.match(TokenType.RBrace)){
                         throw new ParserError({
@@ -486,11 +548,14 @@ export class Parser{
                             column: this.currentToken.column,
                         })
                     }
+                    break
                 }
-            } else if (this.match(TokenType.Dot)){
-                left = this.parseFieldAccess(left)
-            } else {
-                break
+                case TokenType.Dot:
+                    this.getToken()
+                    left = this.parseFieldAccess(left)
+                    break
+                default:
+                    break loop
             }
         }
         return left
@@ -514,52 +579,76 @@ export class Parser{
     }
 
     parsePrimary(): Node {
-        if(this.match(TokenType.IntLiteral)){
-            return _literal(LiteralType.Integer, this.currentToken.data)
-        } else if (this.match(TokenType.FloatLiteral)){
-            return _literal(LiteralType.Float, this.currentToken.data)
-        } else if (this.match(TokenType.DoubleLiteral)){
-            return _literal(LiteralType.Double, this.currentToken.data)
-        } else if (this.match(TokenType.StringLiteral)){
-            return _literal(LiteralType.String, this.currentToken.data)
-        } else if (this.match(TokenType.CharLiteral)){
-            return _literal(LiteralType.CharLiteral, this.currentToken.data)
-        } else if (this.peek().type === TokenType.StringTemplate){
-            return this.parseStringTemplate()
-        } else if (this.match(TokenType.BoolLiteral)){
-            return _literal(LiteralType.Boolean, this.currentToken.data)
-        } else if (this.match(TokenType.LParen)){
-            const expression = this.parseExpression()
-            if (!this.match(TokenType.RParen)){
+        switch (this.peek().type){
+            case TokenType.IntLiteral:
+                this.getToken()
+                return _literal(LiteralType.Integer, this.currentToken.data)
+            case TokenType.FloatLiteral:
+                this.getToken()
+                return _literal(LiteralType.Float, this.currentToken.data)
+            case TokenType.DoubleLiteral:
+                this.getToken()
+                return _literal(LiteralType.Double, this.currentToken.data)
+            case TokenType.StringLiteral:
+                this.getToken()
+                return _literal(LiteralType.String, this.currentToken.data)
+            case TokenType.CharLiteral:
+                this.getToken()
+                return _literal(LiteralType.CharLiteral, this.currentToken.data)
+            case TokenType.StringTemplate:
+                return this.parseStringTemplate()
+            case TokenType.BoolLiteral:
+                this.getToken()
+                return _literal(LiteralType.Boolean, this.currentToken.data)
+            case TokenType.LBrace:
+                // `[…](` is a lambda capture list; any other `[…]` is an array literal.
+                if(this.looksLikeLambdaCapture()){
+                    return this.parseLambda()
+                }
+                this.getToken()
+                return this.parseArrayLiteral()
+            case TokenType.LParen: {
+                // `(params) =>` / `(params): T =>` is a lambda; otherwise a grouped expression.
+                if(this.looksLikeLambda()){
+                    return this.parseLambda()
+                }
+                this.getToken()
+                const expression = this.parseExpression()
+                if (!this.match(TokenType.RParen)){
+                    throw new ParserError({
+                        type: ParserErrorType.InvalidSyntax,
+                        message: "expected )",
+                        line: this.currentToken.line,
+                        column: this.currentToken.column,
+                    })
+                }
+                return expression
+            }
+            case TokenType.Identifier:
+                this.getToken()
+                return this.parseIdentifier()
+            default:
+                this.getToken()
                 throw new ParserError({
-                    type: ParserErrorType.InvalidSyntax,
-                    message: "expected )",
+                    type: ParserErrorType.UnexpectedToken,
+                    message: "unexpected token in expression: " + TokenType[this.currentToken.type],
                     line: this.currentToken.line,
                     column: this.currentToken.column,
                 })
-            }
-            return expression
-        } else if (this.match(TokenType.Identifier)){
-            return this.parseIdentifier()
-        } else {
-            this.getToken()
-            throw new ParserError({
-                type: ParserErrorType.UnexpectedToken,
-                message: "unexpected token in expression: " + TokenType[this.currentToken.type],
-                line: this.currentToken.line,
-                column: this.currentToken.column,
-            })
         }
     }
 
     parseIdentifier(): Node {
         const identifier = _variable(this.currentToken.data)
-        if(this.match(TokenType.LParen)){
-            return this.parseFunctionCall(identifier)
-        } else if(this.match(TokenType.Dot)) {
-            return this.parseFieldAccess(identifier)
-        } else {
-            return identifier
+        switch (this.peek().type){
+            case TokenType.LParen:
+                this.getToken()
+                return this.parseFunctionCall(identifier)
+            case TokenType.Dot:
+                this.getToken()
+                return this.parseFieldAccess(identifier)
+            default:
+                return identifier
         }
     }
 
@@ -1280,6 +1369,10 @@ export class Parser{
                     filePath: this.fileManager.lexer.getPath()
                 })
             }
+            case TokenType.Loop: {
+                this.getToken()
+                return this.parseLoop()
+            }
             case TokenType.Let: {
                 this.getToken()
                 return this.parseLet()
@@ -1345,6 +1438,169 @@ export class Parser{
                 return this.parseExpression()
             }
         }
+    }
+
+    // Returns true if the upcoming tokens look like a lambda parameter list
+    // starting with `(`. Handles: `()` or `(ident:` patterns.
+    protected looksLikeLambda(): boolean {
+        const t2 = this.peekAt(2)  // first token inside (
+        if (t2.type === TokenType.RParen) {
+            return this.peekAt(3).type === TokenType.FatArrow
+        }
+        if (t2.type === TokenType.Identifier) {
+            return this.peekAt(3).type === TokenType.Colon
+        }
+        return false
+    }
+
+    // Returns true if the upcoming `[` is a lambda capture list (i.e. the
+    // matching `]` is immediately followed by `(`). Scans forward without
+    // consuming any tokens.
+    protected looksLikeLambdaCapture(): boolean {
+        let depth = 0
+        let i = this.currentTokenIndex + 1
+        while (i < this.tokens.length) {
+            const t = this.tokens[i]
+            if (t.type === TokenType.LBrace) depth++
+            else if (t.type === TokenType.RBrace) {
+                depth--
+                if (depth === 0) return this.tokens[i + 1]?.type === TokenType.LParen
+            } else if (t.type === TokenType.EOF) break
+            i++
+        }
+        return false
+    }
+
+    protected parseCaptureEntry(): CaptureEntry {
+        let modifier = CaptureModifier.copy
+
+        // Check if next identifier is a capture modifier keyword
+        if (this.peek().type === TokenType.Identifier) {
+            const name = this.resolveIdentifierName(this.peekAt(1).data)
+            const m = CAPTURE_MODIFIER_NAMES.get(name ?? "")
+            if (m !== undefined) {
+                const after = this.peekAt(2)
+                if (after.type === TokenType.Identifier || after.type === TokenType.Star) {
+                    this.getToken()
+                    modifier = m
+                }
+            }
+        }
+
+        if (this.match(TokenType.Star)) {
+            return {modifier, variableId: null}
+        }
+
+        const identToken = this.getToken()
+        if (identToken.type !== TokenType.Identifier) {
+            throw new ParserError({
+                type: ParserErrorType.UnexpectedToken,
+                message: "expected a capture variable name or *",
+                line: identToken.line,
+                column: identToken.column,
+                filePath: this.fileManager.lexer.getPath()
+            })
+        }
+        return {modifier, variableId: identToken.data}
+    }
+
+    protected parseLambda(): Node {
+        const captures: CaptureEntry[] = []
+
+        // Optional capture list [...]
+        if (this.match(TokenType.LBrace)) {
+            while (!this.match(TokenType.RBrace)) {
+                if (this.match(TokenType.EOF)) {
+                    throw new ParserError({
+                        type: ParserErrorType.UnexpectedEndOfFile,
+                        message: "missing ] in capture list",
+                        line: this.currentToken.line,
+                        column: this.currentToken.column,
+                        filePath: this.fileManager.lexer.getPath()
+                    })
+                }
+                captures.push(this.parseCaptureEntry())
+                this.match(TokenType.Comma)
+            }
+        }
+
+        const parameters = this.parseParameterList()
+
+        // Optional return type annotation: (params): returnType => { ... }
+        let returnType: TypeNode = _nameType(-1, TypeKind.Void)
+        if (this.match(TokenType.Colon)) {
+            returnType = this.parseType()
+        }
+
+        if (!this.match(TokenType.FatArrow)) {
+            throw new ParserError({
+                type: ParserErrorType.InvalidSyntax,
+                message: "expected => after lambda parameter list",
+                line: this.currentToken.line,
+                column: this.currentToken.column,
+                filePath: this.fileManager.lexer.getPath()
+            })
+        }
+
+        if (!this.match(TokenType.StackOpen)) {
+            throw new ParserError({
+                type: ParserErrorType.InvalidSyntax,
+                message: "expected { after =>",
+                line: this.currentToken.line,
+                column: this.currentToken.column,
+                filePath: this.fileManager.lexer.getPath()
+            })
+        }
+
+        return _lambda({
+            captures,
+            parameters,
+            returnType,
+            body: this.parseCodeBlock(parameters.map(p => p.id))
+        })
+    }
+
+    // Parse an array literal `[ <expr> {"," <expr>} [","] ]`. The opening `[`
+    // must already have been consumed. Indexing (`arr[i]`) is handled separately
+    // in parsePostfix; an array literal only appears in primary position, so the
+    // two never collide.
+    protected parseArrayLiteral(): Node {
+        const elements: Node[] = []
+        while (!this.match(TokenType.RBrace)) {
+            if (this.match(TokenType.EOF)) {
+                throw new ParserError({
+                    type: ParserErrorType.UnexpectedEndOfFile,
+                    message: "missing ] in array literal",
+                    line: this.currentToken.line,
+                    column: this.currentToken.column,
+                    filePath: this.fileManager.lexer.getPath()
+                })
+            }
+            elements.push(this.parseExpression())
+            if (!this.match(TokenType.Comma) && this.peek().type !== TokenType.RBrace) {
+                throw new ParserError({
+                    type: ParserErrorType.InvalidSyntax,
+                    message: "expected a comma or ] in array literal",
+                    line: this.currentToken.line,
+                    column: this.currentToken.column,
+                    filePath: this.fileManager.lexer.getPath()
+                })
+            }
+        }
+        return _arrayLiteral(elements)
+    }
+
+    protected parseLoop(): Node {
+        if (!this.match(TokenType.StackOpen)) {
+            throw new ParserError({
+                type: ParserErrorType.InvalidSyntax,
+                message: "expected { after loop",
+                line: this.currentToken.line,
+                column: this.currentToken.column,
+                filePath: this.fileManager.lexer.getPath()
+            })
+        }
+        return _loop(this.parseCodeBlock())
     }
 
     parseFile(){

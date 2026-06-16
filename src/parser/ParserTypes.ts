@@ -102,6 +102,9 @@ export type Node =
     | {type: NodeType.SwitchDefaultNode, data: SwitchDefaultNode}
     | {type: NodeType.AssignmentNode, data: AssignmentNode}
     | {type: NodeType.WhileNode, data: WhileNode}
+    | {type: NodeType.LoopNode, data: LoopNode}
+    | {type: NodeType.LambdaNode, data: LambdaNode}
+    | {type: NodeType.ArrayLiteralNode, data: ArrayLiteralNode}
     | {type: NodeType.BreakNode, data: BreakNode}
     | {type: NodeType.ContinueNode, data: ContinueNode}
     | {type: NodeType.ReturnNode, data: ReturnNode}
@@ -132,6 +135,9 @@ export enum NodeType {
     SwitchDefaultNode,
     AssignmentNode,
     WhileNode,
+    LoopNode,
+    LambdaNode,
+    ArrayLiteralNode,
     BreakNode,
     ContinueNode,
     ReturnNode,
@@ -328,6 +334,33 @@ export interface AssignmentNode {
 export interface WhileNode {
     condition: Node
     body: Node
+}
+
+export interface LoopNode {
+    body: Node
+}
+
+export enum CaptureModifier {
+    copy,
+    ref,
+    borrow,
+    move,
+}
+
+export interface CaptureEntry {
+    modifier: CaptureModifier
+    variableId: number | null  // null = wildcard (*)
+}
+
+export interface LambdaNode {
+    captures: CaptureEntry[]
+    parameters: FunctionParameter[]
+    returnType: TypeNode
+    body: Node
+}
+
+export interface ArrayLiteralNode {
+    elements: Node[]
 }
 
 export interface BreakNode {}

@@ -34,6 +34,7 @@ export const KEYWORDS_MAP = new Map<string, TokenType>([
     ["default", TokenType.Default],
     ["for", TokenType.For],
     ["while", TokenType.While],
+    ["loop", TokenType.Loop],
     ["break", TokenType.Break],
     ["continue", TokenType.Continue],
     ["return", TokenType.Return],

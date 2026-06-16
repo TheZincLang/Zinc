@@ -178,5 +178,38 @@ export async fn fetchValue(id: int): int {
     return add(id, 1)
 }
 
+/* ── array literals (primary position) ────────────────────────────────── */
+let empty = []
+let primes = [2, 3, 5, 7, 11]
+let trailing = [1, 2, 3,]
+let nestedArr = [[1, 2], [3, 4]]
+let mixed = [counter, counter + 1, add(1, 2)]
+let indexedLiteral = [10, 20, 30][counter]
+
+/* ── loop (infinite, exited via break) ────────────────────────────────── */
+loop {
+    counter -= 1
+    if (counter == 0) {
+        break
+    }
+}
+
+/* ── lambdas / closures ───────────────────────────────────────────────── */
+let noCapture = (x: int) => {
+    return x + 1
+}
+let withReturnType = (x: int): int => {
+    return x + 1
+}
+let withCapture = [counter, ref greeting](x: int): int => {
+    return x + counter
+}
+let wildcard = [ref *](a: int, b: int) => {
+    return a + b
+}
+let mixedCapture = [move counter, copy *]() => {
+    return counter
+}
+
 /* ── return statements ────────────────────────────────────────────────── */
 return counter + 1
