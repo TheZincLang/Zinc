@@ -99,8 +99,7 @@ lifetime inference, and code generation (LLVM backend).
 
 ## Documentation
 
-Language and compiler reference documentation lives in the companion
-[Docs](../Docs) repository.
+Language and compiler reference documentation lives in the companion Docs repository.
 
 ## License
 
