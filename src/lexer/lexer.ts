@@ -942,7 +942,7 @@ export class Lexer {
             }
             this.fileBuffer.offsetOffset("import ".length)
             this.fileBuffer.skipWhitespace()
-            if(this.fileBuffer.readNext("types ".length) === "types ") this.fileBuffer.offsetOffset("type".length)
+            if(this.fileBuffer.readNext("types ".length) === "types ") this.fileBuffer.offsetOffset("types ".length)
             this.fileBuffer.skipWhitespace()
             switch (this.peek()) {
                 case "*": {

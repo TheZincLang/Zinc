@@ -76,6 +76,7 @@ export enum TypeKind {
  * by name). Several aliases collapse onto the same TypeKind until the type
  * system grows distinct fixed-width integer/float kinds.
  */
+
 export const PRIMITIVE_TYPES = new Map<string, TypeKind>([
     ["int", TypeKind.Int],
     ["i8", TypeKind.Int],

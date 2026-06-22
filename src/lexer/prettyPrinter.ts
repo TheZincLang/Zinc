@@ -19,6 +19,8 @@ const TYPE_COLORS: Partial<Record<string, string>> = {
     Fn: "\x1b[35m", Let: "\x1b[35m", Const: "\x1b[35m",
     Enum: "\x1b[35m", Async: "\x1b[35m", If: "\x1b[35m",
     Else: "\x1b[35m", Import: "\x1b[35m", Export: "\x1b[35m",
+    Struct: "\x1b[35m", Class: "\x1b[35m",
+    Interface: "\x1b[35m", Group: "\x1b[35m",
     // meta
     SOF:     "\x1b[2m",
     EOF:     "\x1b[2m",

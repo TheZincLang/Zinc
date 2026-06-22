@@ -19,7 +19,10 @@ export const KEYWORDS_MAP = new Map<string, TokenType>([
     ["enum", TokenType.Enum],
     ["struct", TokenType.Struct],
     ["class", TokenType.Class],
+    ["interface", TokenType.Interface],
+    ["group", TokenType.Group],
     ["extends", TokenType.Extends],
+    ["mixin", TokenType.Mixin],
     ["implements", TokenType.Implements],
     ["owns", TokenType.Owns],
     ["serves", TokenType.Serves],
@@ -38,6 +41,15 @@ export const KEYWORDS_MAP = new Map<string, TokenType>([
     ["break", TokenType.Break],
     ["continue", TokenType.Continue],
     ["return", TokenType.Return],
+    ["new", TokenType.New],
+    ["typeof", TokenType.Typeof],
+    ["await", TokenType.Await],
+    ["sizeof", TokenType.Sizeof],
+    ["delete", TokenType.Delete],
+    ["throw", TokenType.Throw],
+    ["try", TokenType.Try],
+    ["catch", TokenType.Catch],
+    ["finally", TokenType.Finally],
 ])
 
 

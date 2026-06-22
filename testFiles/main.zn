@@ -1,5 +1,11 @@
+import { square, cube } from "./math.zn"
+import * as math from "./math.zn"
+import types { PI } from "./math.zn"
+
 // ── Zinc parser test file ───────────────────────────────────────────────
 // Exercises every construct the parser currently understands.
+// NOTE: imports must lead the file — findImports() (the discovery pre-pass)
+// scans only a leading run of import statements and stops at the first comment.
 
 /* ── enums (global scope only) ────────────────────────────────────────── */
 const enum Color {
@@ -13,6 +19,23 @@ enum Direction: int {
     East,
     South,
     West,
+}
+
+/* ── interfaces (field + method signatures, no bodies) ────────────────── */
+interface Drawable {
+    fn draw(): void
+}
+
+interface Sized {
+    width: int
+    height: int
+    fn area(): int
+}
+
+/* ── groups (bulk clause targets) ─────────────────────────────────────── */
+group Renderable {
+    Drawable,
+    Sized,
 }
 
 /* ── structs (fields + methods, no constructors/inheritance) ──────────── */
@@ -40,7 +63,7 @@ class Shape {
     }
 }
 
-class Rect extends Shape implements Drawable, Sized owns Point serves Canvas {
+class Rect extends Shape mixin Movable, Resizable implements Renderable owns Point serves Canvas {
     topLeft: Point
     size: Point
     static label: string[]
@@ -64,6 +87,11 @@ let smallFloat = 1.5f
 let letter = 'z'
 let isReady = True
 let numbers: int[]
+
+/* ── union types (parse only; narrowing is the type checker's job) ────── */
+let mixedVal: int | string = 42
+let nullable: string | null = greeting
+let unionArr: int[] | string[] | bool
 
 /* ── operator precedence & expressions ────────────────────────────────── */
 let arithmetic = 2 + 3 * 4 - 10 / 2
@@ -178,6 +206,52 @@ export async fn fetchValue(id: int): int {
     return add(id, 1)
 }
 
+fn parseValue(input: string): int | string | null {
+    return input
+}
+
+/* ── generics (type parameters at binding sites) ──────────────────────── */
+struct Box<T> {
+    value: T
+}
+
+class Container<T> extends Box implements Sized {
+    items: T[]
+
+    fn first(): T {
+        return items[0]
+    }
+}
+
+class Map<K, V> {
+    keys: K[]
+    values: V[]
+}
+
+enum Maybe<T> {
+    Some,
+    None,
+}
+
+interface Comparable<T> {
+    fn compareTo(other: T): int
+}
+
+fn identity<T>(value: T): T {
+    return value
+}
+
+fn pick<T, F, C>(a: T, b: F, c: C): T {
+    return a
+}
+
+/* ── generic type arguments in annotations ────────────────────────────── */
+let boxed: Box<int>
+let pair: Map<string, Box<int>>
+let boxes: Box<int>[]
+let eitherBox: Box<int | string>
+let nestedBox: Box<Map<string, int>>
+
 /* ── array literals (primary position) ────────────────────────────────── */
 let empty = []
 let primes = [2, 3, 5, 7, 11]
@@ -192,6 +266,26 @@ loop {
     if (counter == 0) {
         break
     }
+}
+
+/* ── for loops (C-style three-clause and for-in) ──────────────────────── */
+for (let i = 0; i < 10; i++) {
+    print(i)
+}
+
+for (let j = 10; j > 0; j -= 1) {
+    if (j == 5) {
+        continue
+    }
+    print(j)
+}
+
+for (item in numbers) {
+    print(item)
+}
+
+for (;;) {
+    break
 }
 
 /* ── lambdas / closures ───────────────────────────────────────────────── */
@@ -209,6 +303,42 @@ let wildcard = [ref *](a: int, b: int) => {
 }
 let mixedCapture = [move counter, copy *]() => {
     return counter
+}
+
+/* ── keyword prefix operators ─────────────────────────────────────────── */
+let instance = new Point(1, 2)
+let kind = typeof counter
+let fetched = await fetchValue(7)
+let bytes = sizeof counter
+delete instance
+
+/* ── throw / try / catch / finally ────────────────────────────────────── */
+fn risky(n: int): int {
+    if (n < 0) {
+        throw "negative input"
+    }
+    return n
+}
+
+try {
+    let safe = risky(counter)
+    print(safe)
+} catch (err) {
+    print(err)
+} finally {
+    print("done")
+}
+
+try {
+    throw counter
+} catch {
+    print("caught without binding")
+}
+
+try {
+    print("guarded")
+} finally {
+    print("cleanup only")
 }
 
 /* ── return statements ────────────────────────────────────────────────── */
