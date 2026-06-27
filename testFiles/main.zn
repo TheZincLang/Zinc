@@ -289,19 +289,19 @@ for (;;) {
 }
 
 /* ── lambdas / closures ───────────────────────────────────────────────── */
-let noCapture = (x: int) => {
+let noCapture = fn (x: int) => {
     return x + 1
 }
-let withReturnType = (x: int): int => {
+let withReturnType = fn (x: int): int => {
     return x + 1
 }
-let withCapture = [counter, ref greeting](x: int): int => {
+let withCapture = fn [counter, ref greeting](x: int): int => {
     return x + counter
 }
-let wildcard = [ref *](a: int, b: int) => {
+let wildcard = fn [ref *](a: int, b: int) => {
     return a + b
 }
-let mixedCapture = [move counter, copy *]() => {
+let mixedCapture = fn [move counter, copy *]() => {
     return counter
 }
 

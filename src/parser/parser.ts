@@ -639,18 +639,14 @@ export class Parser{
             case TokenType.BoolLiteral:
                 this.getToken()
                 return _literal(LiteralType.Boolean, this.currentToken.data)
+            case TokenType.Fn:
+                // `fn [captures](params) => { … }` / `fn (params) => { … }` is a lambda.
+                this.getToken()
+                return this.parseLambda()
             case TokenType.LBrace:
-                // `[…](` is a lambda capture list; any other `[…]` is an array literal.
-                if(this.looksLikeLambdaCapture()){
-                    return this.parseLambda()
-                }
                 this.getToken()
                 return this.parseArrayLiteral()
             case TokenType.LParen: {
-                // `(params) =>` / `(params): T =>` is a lambda; otherwise a grouped expression.
-                if(this.looksLikeLambda()){
-                    return this.parseLambda()
-                }
                 this.getToken()
                 const expression = this.parseExpression()
                 if (!this.match(TokenType.RParen)){
@@ -1904,37 +1900,6 @@ export class Parser{
                 return this.parseExpression()
             }
         }
-    }
-
-    // Returns true if the upcoming tokens look like a lambda parameter list
-    // starting with `(`. Handles: `()` or `(ident:` patterns.
-    protected looksLikeLambda(): boolean {
-        const t2 = this.peekAt(2)  // first token inside (
-        if (t2.type === TokenType.RParen) {
-            return this.peekAt(3).type === TokenType.FatArrow
-        }
-        if (t2.type === TokenType.Identifier) {
-            return this.peekAt(3).type === TokenType.Colon
-        }
-        return false
-    }
-
-    // Returns true if the upcoming `[` is a lambda capture list (i.e. the
-    // matching `]` is immediately followed by `(`). Scans forward without
-    // consuming any tokens.
-    protected looksLikeLambdaCapture(): boolean {
-        let depth = 0
-        let i = this.currentTokenIndex + 1
-        while (i < this.tokens.length) {
-            const t = this.tokens[i]
-            if (t.type === TokenType.LBrace) depth++
-            else if (t.type === TokenType.RBrace) {
-                depth--
-                if (depth === 0) return this.tokens[i + 1]?.type === TokenType.LParen
-            } else if (t.type === TokenType.EOF) break
-            i++
-        }
-        return false
     }
 
     protected parseCaptureEntry(): CaptureEntry {
