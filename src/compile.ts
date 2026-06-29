@@ -1,6 +1,7 @@
 import {FileManager} from "./file/fileManager/fileManager.ts";
 import {printAST} from "./parser/prettyPrinter.ts";
 import {BugError, BugErrorType} from "./global/types/globalTypes.ts";
+import {CEmitter, compileAndRun} from "./transpiler/cgen.ts";
 
 export function compile(path: string) {
     const files: Map<string, FileManager> = new Map()
@@ -30,5 +31,7 @@ export function compile(path: string) {
             })
         }
         printAST(fileManager.astTree, {symbolTable: fileManager.parser?.getSymbolTable()})
+        const Transpiler: CEmitter = new CEmitter(fileManager)
+        compileAndRun(Transpiler.emit(fileManager.astTree))
     }
 }

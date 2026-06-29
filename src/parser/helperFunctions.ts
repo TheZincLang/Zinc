@@ -2,18 +2,13 @@ import {
     AssignmentOperator,
     BinaryExpressionOperator,
     BitwiseOperator,
-    ClassNode,
-    ConstructorNode,
+    CodeBlockNode,
     EnumNode,
     ExpressionOperator,
     FieldNode,
     FunctionNode,
-    GroupNode,
     ImportNode,
-    InterfaceNode,
-    LambdaNode,
     LiteralType,
-    MethodSignatureNode,
     Node,
     NodeType,
     PostfixOperator,
@@ -81,7 +76,7 @@ export function _codeBlock(body: Node[]): Node{
     return {type: NodeType.CodeBlock, data: {body}}
 }
 
-export function _if(condition: Node, ifNode: Node, elseNode: Node | null = null): Node {
+export function _if(condition: Node, ifNode: CodeBlockNode, elseNode: Node | null = null): Node {
     return {type: NodeType.IfNode, data: {condition: condition, ifNode: ifNode, elseNode: elseNode}}
 }
 
@@ -89,11 +84,11 @@ export function _switch(expression: Node, cases: Node[]): Node {
     return {type: NodeType.SwitchNode, data: {expression: expression, cases: cases}}
 }
 
-export function _switchCase(value: Node, body: Node): Node {
+export function _switchCase(value: Node, body: CodeBlockNode): Node {
     return {type: NodeType.SwitchCaseNode, data: {value: value, body: body}}
 }
 
-export function _switchDefault(body: Node): Node {
+export function _switchDefault(body: CodeBlockNode): Node {
     return {type: NodeType.SwitchDefaultNode, data: {body: body}}
 }
 
@@ -101,28 +96,24 @@ export function _assignment(op: AssignmentOperator, target: Node, value: Node): 
     return {type: NodeType.AssignmentNode, data: {operator: op, target: target, value: value}}
 }
 
-export function _while(condition: Node, body: Node): Node {
+export function _while(condition: Node, body: CodeBlockNode): Node {
     return {type: NodeType.WhileNode, data: {condition: condition, body: body}}
 }
 
-export function _loop(body: Node): Node {
+export function _loop(body: CodeBlockNode): Node {
     return {type: NodeType.LoopNode, data: {body}}
 }
 
-export function _for(initializer: Node | null, condition: Node | null, update: Node | null, body: Node): Node {
+export function _for(initializer: Node | null, condition: Node | null, update: Node | null, body: CodeBlockNode): Node {
     return {type: NodeType.ForNode, data: {initializer, condition, update, body}}
 }
 
-export function _forIn(variableId: number, iterable: Node, body: Node): Node {
+export function _forIn(variableId: number, iterable: Node, body: CodeBlockNode): Node {
     return {type: NodeType.ForInNode, data: {variableId, iterable, body}}
 }
 
 export function _import(data: ImportNode): Node {
     return {type: NodeType.ImportNode, data}
-}
-
-export function _lambda(data: LambdaNode): Node {
-    return {type: NodeType.LambdaNode, data}
 }
 
 export function _arrayLiteral(elements: Node[]): Node {
@@ -149,41 +140,8 @@ export function _struct(data: StructNode): Node {
     return {type: NodeType.StructNode, data}
 }
 
-export function _class(data: ClassNode): Node {
-    return {type: NodeType.ClassNode, data}
-}
-
 export function _field(data: FieldNode): Node {
     return {type: NodeType.FieldNode, data}
-}
-
-export function _constructor(data: ConstructorNode): Node {
-    return {type: NodeType.ConstructorNode, data}
-}
-
-export function _interface(data: InterfaceNode): Node {
-    return {type: NodeType.InterfaceNode, data}
-}
-
-export function _methodSignature(data: MethodSignatureNode): Node {
-    return {type: NodeType.MethodSignatureNode, data}
-}
-
-export function _group(data: GroupNode): Node {
-    return {type: NodeType.GroupNode, data}
-}
-
-export function _throw(value: Node): Node {
-    return {type: NodeType.ThrowNode, data: {value}}
-}
-
-export function _try(
-    tryBlock: Node,
-    catchParam: number | null,
-    catchBlock: Node | null,
-    finallyBlock: Node | null
-): Node {
-    return {type: NodeType.TryNode, data: {tryBlock, catchParam, catchBlock, finallyBlock}}
 }
 
 export function _nameType(id: number, resolved: TypeKind): TypeNode {
@@ -192,33 +150,4 @@ export function _nameType(id: number, resolved: TypeKind): TypeNode {
 
 export function _arrayType(element: TypeNode): TypeNode {
     return {kind: TypeNodeKind.Array, element}
-}
-
-export function _unionType(members: TypeNode[]): TypeNode {
-    return {kind: TypeNodeKind.Union, members}
-}
-
-export function _genericType(id: number, resolved: TypeKind, args: TypeNode[]): TypeNode {
-    return {kind: TypeNodeKind.Generic, id, resolved, arguments: args}
-}
-
-/** Structural equality on TypeNodes — used to reject duplicate union members. */
-export function typeNodesEqual(a: TypeNode, b: TypeNode): boolean {
-    if (a.kind !== b.kind) return false
-    switch (a.kind) {
-        case TypeNodeKind.Name:
-            return b.kind === TypeNodeKind.Name && a.id === b.id && a.resolved === b.resolved
-        case TypeNodeKind.Array:
-            return b.kind === TypeNodeKind.Array && typeNodesEqual(a.element, b.element)
-        case TypeNodeKind.Union:
-            return b.kind === TypeNodeKind.Union
-                && a.members.length === b.members.length
-                && a.members.every((m, i) => typeNodesEqual(m, b.members[i]))
-        case TypeNodeKind.Generic:
-            return b.kind === TypeNodeKind.Generic
-                && a.id === b.id
-                && a.resolved === b.resolved
-                && a.arguments.length === b.arguments.length
-                && a.arguments.every((arg, i) => typeNodesEqual(arg, b.arguments[i]))
-    }
 }

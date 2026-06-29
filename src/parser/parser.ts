@@ -3,14 +3,12 @@ import {
     AssignmentOperator,
     BinaryExpressionOperator,
     BitwiseOperator,
-    CaptureEntry,
-    CaptureModifier,
+    CodeBlockNode,
     EnumOptionNode,
     ExpressionOperator,
     FunctionParameter,
     ImportKind,
     LiteralType,
-    MethodSignatureNode,
     Modifier,
     Node,
     NodeType,
@@ -31,9 +29,7 @@ import {
     _bitwise,
     _break,
     _call,
-    _class,
     _codeBlock,
-    _constructor,
     _continue,
     _enum,
     _field,
@@ -41,16 +37,11 @@ import {
     _for,
     _forIn,
     _function,
-    _genericType,
-    _group,
     _if,
     _import,
-    _interface,
-    _lambda,
     _literal,
     _loop,
     _math,
-    _methodSignature,
     _nameType,
     _postfix,
     _return,
@@ -61,25 +52,13 @@ import {
     _switch,
     _switchCase,
     _switchDefault,
-    _throw,
-    _try,
     _unary,
-    _unionType,
     _variable,
     _while,
-    typeNodesEqual
 } from "./helperFunctions.ts";
 import {SymbolTable} from "./prettyPrinter.ts";
 import {PRIMITIVE_TYPES, TypeKind} from "../global/types/globalTypes.ts";
 import {FileManager} from "../file/fileManager/fileManager.ts";
-
-const CAPTURE_MODIFIER_NAMES = new Map<string, CaptureModifier>([
-    ["copy",   CaptureModifier.copy],
-    ["ref",    CaptureModifier.ref],
-    ["borrow", CaptureModifier.borrow],
-    ["bor",    CaptureModifier.borrow],
-    ["move",   CaptureModifier.move],
-])
 
 export class Parser{
     protected tokens: Token[]
@@ -117,9 +96,6 @@ export class Parser{
         return table
     }
 
-    // Reverse-lookup an interned identifier id to its source spelling. The
-    // identifier map is fully populated by the time parsing runs, so the
-    // reverse map is built once and cached.
     protected resolveIdentifierName(id: number): string | undefined {
         if(!this.identifierNames){
             this.identifierNames = new Map(
@@ -220,8 +196,6 @@ export class Parser{
         }
         const enumId = nameToken.data
 
-        const typeParameters = this.parseTypeParameters()
-
         let enumType: TypeNode = _nameType(-1, TypeKind.Unknown)
         if(this.match(TokenType.Colon)){
             enumType = this.parseType()
@@ -268,7 +242,6 @@ export class Parser{
         return _enum({
             id: enumId,
             modifiers: currentModifiers,
-            typeParameters,
             type: enumType,
             options
         })
@@ -317,8 +290,8 @@ export class Parser{
                     filePath: this.fileManager.lexer.getPath()
                 })
             }
-            this.getToken() // consume the assignment operator
-            const value = this.parseAssignment() // right-associative
+            this.getToken()
+            const value = this.parseAssignment()
             return _assignment(operator, left, value)
         }
         return left
@@ -532,21 +505,6 @@ export class Parser{
             case TokenType.Decrement:
                 this.getToken()
                 return _unary(UnaryOperator.decrement, this.parseUnary())
-            case TokenType.New:
-                this.getToken()
-                return _unary(UnaryOperator.new, this.parseUnary())
-            case TokenType.Typeof:
-                this.getToken()
-                return _unary(UnaryOperator.typeof, this.parseUnary())
-            case TokenType.Await:
-                this.getToken()
-                return _unary(UnaryOperator.await, this.parseUnary())
-            case TokenType.Sizeof:
-                this.getToken()
-                return _unary(UnaryOperator.sizeof, this.parseUnary())
-            case TokenType.Delete:
-                this.getToken()
-                return _unary(UnaryOperator.delete, this.parseUnary())
             default:
                 return this.parsePostfix()
         }
@@ -639,10 +597,6 @@ export class Parser{
             case TokenType.BoolLiteral:
                 this.getToken()
                 return _literal(LiteralType.Boolean, this.currentToken.data)
-            case TokenType.Fn:
-                // `fn [captures](params) => { … }` / `fn (params) => { … }` is a lambda.
-                this.getToken()
-                return this.parseLambda()
             case TokenType.LBrace:
                 this.getToken()
                 return this.parseArrayLiteral()
@@ -738,7 +692,7 @@ export class Parser{
         return _stringTemplate(parts)
     }
 
-    parseCodeBlock(initialVariables: number[] = []): Node {
+    parseCodeBlock(initialVariables: number[] = []): CodeBlockNode {
         const body: Node[] = []
         this.stack.push({declaredVariables: new Set<number>(initialVariables)})
         this.stackIndex++
@@ -755,7 +709,7 @@ export class Parser{
         }
         this.stack.pop()
         this.stackIndex--
-        return _codeBlock(body)
+        return {body}
     }
 
     parseIf(): Node {
@@ -798,7 +752,7 @@ export class Parser{
                         column: this.currentToken.column
                     })
                 }
-                elseNode = this.parseCodeBlock()
+                elseNode = _codeBlock(this.parseCodeBlock().body)
             }
         }
         return _if(condition, ifNode, elseNode)
@@ -876,7 +830,7 @@ export class Parser{
         }
     }
 
-    parseSwitchCaseBody(): Node {
+    parseSwitchCaseBody(): CodeBlockNode {
         if(!this.match(TokenType.Colon)) {
             throw new ParserError({
                 type: ParserErrorType.InvalidSyntax,
@@ -933,115 +887,11 @@ export class Parser{
         return _return(this.parseExpression())
     }
 
-    // `throw <expr>`. The thrown value is mandatory; a trailing `;` is optional.
-    parseThrow(): Node {
-        const value = this.parseExpression()
-        this.match(TokenType.Semicolon)
-        return _throw(value)
-    }
-
-    // `try <block> [catch [(<ident>)] <block>] [finally <block>]`. The `try`
-    // keyword has already been consumed. At least one of `catch`/`finally` must
-    // follow. The catch binding (when written) is scoped to the catch block.
-    parseTry(): Node {
-        if(!this.match(TokenType.StackOpen)){
-            throw new ParserError({
-                type: ParserErrorType.InvalidSyntax,
-                message: "expected { after try",
-                line: this.currentToken.line,
-                column: this.currentToken.column,
-                filePath: this.fileManager.lexer.getPath()
-            })
-        }
-        const tryBlock = this.parseCodeBlock()
-
-        let catchParam: number | null = null
-        let catchBlock: Node | null = null
-        if(this.match(TokenType.Catch)){
-            const initialVariables: number[] = []
-            if(this.match(TokenType.LParen)){
-                catchParam = this.expectIdentifier("expected a catch binding name")
-                initialVariables.push(catchParam)
-                if(!this.match(TokenType.RParen)){
-                    throw new ParserError({
-                        type: ParserErrorType.InvalidSyntax,
-                        message: "missing ) after catch binding",
-                        line: this.currentToken.line,
-                        column: this.currentToken.column,
-                        filePath: this.fileManager.lexer.getPath()
-                    })
-                }
-            }
-            if(!this.match(TokenType.StackOpen)){
-                throw new ParserError({
-                    type: ParserErrorType.InvalidSyntax,
-                    message: "expected { after catch",
-                    line: this.currentToken.line,
-                    column: this.currentToken.column,
-                    filePath: this.fileManager.lexer.getPath()
-                })
-            }
-            catchBlock = this.parseCodeBlock(initialVariables)
-        }
-
-        let finallyBlock: Node | null = null
-        if(this.match(TokenType.Finally)){
-            if(!this.match(TokenType.StackOpen)){
-                throw new ParserError({
-                    type: ParserErrorType.InvalidSyntax,
-                    message: "expected { after finally",
-                    line: this.currentToken.line,
-                    column: this.currentToken.column,
-                    filePath: this.fileManager.lexer.getPath()
-                })
-            }
-            finallyBlock = this.parseCodeBlock()
-        }
-
-        if(catchBlock === null && finallyBlock === null){
-            throw new ParserError({
-                type: ParserErrorType.InvalidSyntax,
-                message: "try requires a catch or finally block",
-                line: this.currentToken.line,
-                column: this.currentToken.column,
-                filePath: this.fileManager.lexer.getPath()
-            })
-        }
-
-        return _try(tryBlock, catchParam, catchBlock, finallyBlock)
-    }
-
-    // Reads a type annotation. A single member is a type name plus any number of
-    // `[]` array suffixes; two or more `|`-separated members form a union
-    // (`int | string`). `?`/`&`/generics can hang off the same routine later.
+    // Reads a type annotation: a type name plus any number of `[]` array suffixes.
     protected parseType(): TypeNode {
-        const first = this.parseTypeMember()
-        if(this.peek().type !== TokenType.Pipe){
-            return first
-        }
-        // union: collect the `|`-separated members, rejecting duplicates. The
-        // minimum-two-members rule is automatic — a union only forms once a `|`
-        // is seen. Narrowing/runtime semantics belong to the type checker.
-        const members: TypeNode[] = [first]
-        while(this.match(TokenType.Pipe)){
-            const next = this.parseTypeMember()
-            if(members.some(member => typeNodesEqual(member, next))){
-                throw new ParserError({
-                    type: ParserErrorType.InvalidSyntax,
-                    message: "duplicate member in union type",
-                    line: this.currentToken.line,
-                    column: this.currentToken.column,
-                    filePath: this.fileManager.lexer.getPath()
-                })
-            }
-            members.push(next)
-        }
-        return _unionType(members)
+        return this.parseTypeMember()
     }
 
-    // A single union member: a type name followed by any number of `[]` array
-    // suffixes. Primitive names resolve to their TypeKind; every other name is
-    // recorded as a user-defined type to be resolved by a later pass.
     protected parseTypeMember(): TypeNode {
         const token = this.getToken()
         if(token.type !== TokenType.Identifier){
@@ -1057,11 +907,7 @@ export class Parser{
         const resolved = name !== undefined && PRIMITIVE_TYPES.has(name)
             ? PRIMITIVE_TYPES.get(name)!
             : TypeKind.Unknown
-        // A `<` after the name applies type arguments (`Box<int>`, `Map<K, V>`),
-        // producing a Generic node; array suffixes then wrap the whole thing.
-        let type: TypeNode = this.peek().type === TokenType.LessThan
-            ? _genericType(token.data, resolved, this.parseTypeArguments())
-            : _nameType(token.data, resolved)
+        let type: TypeNode = _nameType(token.data, resolved)
         while(this.match(TokenType.LBrace)){
             if(!this.match(TokenType.RBrace)){
                 throw new ParserError({
@@ -1075,100 +921,6 @@ export class Parser{
             type = _arrayType(type)
         }
         return type
-    }
-
-    // Parse a type-argument list `"<" <type> {"," <type>} ">"` (the `<` must be
-    // the next token). Each argument is a full type (so unions and nested
-    // generics work: `Box<int | string>`, `Map<K, Box<V>>`). At least one
-    // argument is required. The closing `>` is consumed via consumeGenericClose
-    // so a glued `>>`/`>=`/`>>=` from nested generics is split correctly.
-    protected parseTypeArguments(): TypeNode[] {
-        this.getToken() // consume `<`
-        const args: TypeNode[] = [this.parseType()]
-        while(this.match(TokenType.Comma)){
-            args.push(this.parseType())
-        }
-        if(!this.consumeGenericClose()){
-            throw new ParserError({
-                type: ParserErrorType.InvalidSyntax,
-                message: "expected > to close type arguments",
-                line: this.peek().line,
-                column: this.peek().column,
-                filePath: this.fileManager.lexer.getPath()
-            })
-        }
-        return args
-    }
-
-    // Parse a binder's generic type-parameter declaration
-    // `"<" <ident> {"," <ident>} ">"` (e.g. `Box<T>`, `fn pick<T, F, C>`).
-    // Returns the interned ids of the declared parameters, or an empty list when
-    // no `<` follows. Duplicate names are rejected. Parameter names are recorded
-    // in `declaredTypes` so references to them inside the body resolve by name —
-    // scope enforcement and arity/constraint checks are the type checker's job.
-    // See lang/generics.md.
-    protected parseTypeParameters(): number[] {
-        if(!this.match(TokenType.LessThan)){
-            return []
-        }
-        const params: number[] = []
-        const seen = new Set<number>()
-        do {
-            const id = this.expectIdentifier("expected a type parameter name")
-            if(seen.has(id)){
-                throw new ParserError({
-                    type: ParserErrorType.InvalidSyntax,
-                    message: "duplicate type parameter name",
-                    line: this.currentToken.line,
-                    column: this.currentToken.column,
-                    filePath: this.fileManager.lexer.getPath()
-                })
-            }
-            seen.add(id)
-            params.push(id)
-        } while(this.match(TokenType.Comma))
-        if(!this.consumeGenericClose()){
-            throw new ParserError({
-                type: ParserErrorType.InvalidSyntax,
-                message: "expected > to close type parameters",
-                line: this.peek().line,
-                column: this.peek().column,
-                filePath: this.fileManager.lexer.getPath()
-            })
-        }
-        for(const id of params){
-            this.declaredTypes.add(id)
-        }
-        return params
-    }
-
-    // Consume the `>` closing a type-argument or type-parameter list. The lexer
-    // greedily forms `>>`, `>=`, and `>>=`, so a closing `>` may be glued to a
-    // following operator (notably in nested generics like `Box<Map<K, V>>`). In
-    // that case the token is rewritten in place to its remainder and left
-    // unconsumed, so the enclosing level closes against it. Returns false if the
-    // next token is not a closing `>` in any form.
-    protected consumeGenericClose(): boolean {
-        const next = this.peek()
-        switch(next.type){
-            case TokenType.MoreThan:           // >
-                this.getToken()
-                return true
-            case TokenType.ShiftRight:         // >>  → close one, leave >
-                this.tokens[this.currentTokenIndex+1].type = TokenType.MoreThan
-                this.tokens[this.currentTokenIndex+1].column += 1
-                return true
-            case TokenType.MoreThanOrEqual:    // >=  → close one, leave =
-                this.tokens[this.currentTokenIndex+1].type = TokenType.Assign
-                this.tokens[this.currentTokenIndex+1].column += 1
-                return true
-            case TokenType.ShiftRightAssign:   // >>= → close one, leave >=
-                this.tokens[this.currentTokenIndex+1].type = TokenType.MoreThanOrEqual
-                this.tokens[this.currentTokenIndex+1].column += 1
-                return true
-            default:
-                return false
-        }
     }
 
     protected parseStruct(): Node {
@@ -1196,8 +948,6 @@ export class Parser{
         }
         const structId = nameToken.data
 
-        const typeParameters = this.parseTypeParameters()
-
         if(!this.match(TokenType.StackOpen)){
             throw new ParserError({
                 type: ParserErrorType.InvalidSyntax,
@@ -1208,385 +958,63 @@ export class Parser{
             })
         }
 
-        // structs support fields and methods, but not constructors or
-        // inheritance clauses (see lang/structs.md).
-        const fields = this.parseMemberBlock("struct body", false)
+        const fields = this.parseStructBody()
 
         this.declaredTypes.add(structId)
 
         return _struct({
             id: structId,
             modifiers: currentModifiers,
-            typeParameters,
             fields
         })
     }
 
-    protected parseClass(): Node {
-        if(!this.isGlobalScope()){
-            throw new ParserError({
-                type: ParserErrorType.InvalidDeclarationScope,
-                line: this.currentToken.line,
-                column: this.currentToken.column,
-                filePath: this.fileManager.lexer.getPath()
-            })
-        }
-
-        const currentModifiers = new Set<Modifier>(this.currentModifiers)
-        this.currentModifiers.clear()
-
-        const nameToken = this.getToken()
-        if(nameToken.type !== TokenType.Identifier){
-            throw new ParserError({
-                type: ParserErrorType.UnexpectedToken,
-                message: "expected a class name",
-                line: nameToken.line,
-                column: nameToken.column,
-                filePath: this.fileManager.lexer.getPath()
-            })
-        }
-        const classId = nameToken.data
-
-        const typeParameters = this.parseTypeParameters()
-
-        // Inheritance clauses, in fixed order: extends, mixin, implements, owns, serves.
-        let superClass: number | null = null
-        if(this.match(TokenType.Extends)){
-            superClass = this.expectIdentifier("expected a class name after extends")
-        }
-
-        let mixin: number[] = []
-        if(this.match(TokenType.Mixin)){
-            mixin = this.parseIdentifierList("expected a class name after mixin")
-        }
-
-        let implementsTargets: number[] = []
-        if(this.match(TokenType.Implements)){
-            implementsTargets = this.parseIdentifierList("expected an interface name after implements")
-        }
-
-        let owns: number[] = []
-        if(this.match(TokenType.Owns)){
-            owns = this.parseIdentifierList("expected a type name after owns")
-        }
-
-        let serves: number | null = null
-        if(this.match(TokenType.Serves)){
-            serves = this.expectIdentifier("expected exactly one target after serves")
-        }
-
-        if(!this.match(TokenType.StackOpen)){
-            throw new ParserError({
-                type: ParserErrorType.InvalidSyntax,
-                message: "missing { before class body",
-                line: this.currentToken.line,
-                column: this.currentToken.column,
-                filePath: this.fileManager.lexer.getPath()
-            })
-        }
-
-        // classes additionally support `init` constructors.
-        const members = this.parseMemberBlock("class body", true)
-
-        this.declaredTypes.add(classId)
-
-        return _class({
-            id: classId,
-            modifiers: currentModifiers,
-            typeParameters,
-            superClass,
-            mixin,
-            implementsTargets,
-            owns,
-            serves,
-            members
-        })
-    }
-
-    protected parseInterface(): Node {
-        if(!this.isGlobalScope()){
-            throw new ParserError({
-                type: ParserErrorType.InvalidDeclarationScope,
-                line: this.currentToken.line,
-                column: this.currentToken.column,
-                filePath: this.fileManager.lexer.getPath()
-            })
-        }
-
-        const currentModifiers = new Set<Modifier>(this.currentModifiers)
-        this.currentModifiers.clear()
-
-        const nameToken = this.getToken()
-        if(nameToken.type !== TokenType.Identifier){
-            throw new ParserError({
-                type: ParserErrorType.UnexpectedToken,
-                message: "expected an interface name",
-                line: nameToken.line,
-                column: nameToken.column,
-                filePath: this.fileManager.lexer.getPath()
-            })
-        }
-        const interfaceId = nameToken.data
-
-        const typeParameters = this.parseTypeParameters()
-
-        if(!this.match(TokenType.StackOpen)){
-            throw new ParserError({
-                type: ParserErrorType.InvalidSyntax,
-                message: "missing { before interface body",
-                line: this.currentToken.line,
-                column: this.currentToken.column,
-                filePath: this.fileManager.lexer.getPath()
-            })
-        }
-
-        // Interfaces hold a contract only: field signatures and bodyless method
-        // signatures (see lang/interfaces.md). No constructors, no method bodies.
-        const members: Node[] = []
-        const memberIds = new Set<number>()
-        while(!this.match(TokenType.StackClose)){
-            if(this.match(TokenType.EOF)){
-                throw new ParserError({
-                    type: ParserErrorType.UnexpectedEndOfFile,
-                    message: "missing } in interface body",
-                    line: this.currentToken.line,
-                    column: this.currentToken.column,
-                    filePath: this.fileManager.lexer.getPath()
-                })
-            }
-            const member = this.parseInterfaceMember()
-            const id = member.type === NodeType.FieldNode ? member.data.id : (member.data as MethodSignatureNode).id
-            if(memberIds.has(id)){
-                throw new ParserError({
-                    type: ParserErrorType.InvalidSyntax,
-                    message: "duplicate interface member name",
-                    line: this.currentToken.line,
-                    column: this.currentToken.column,
-                    filePath: this.fileManager.lexer.getPath()
-                })
-            }
-            memberIds.add(id)
-            members.push(member)
-        }
-
-        this.declaredTypes.add(interfaceId)
-
-        return _interface({
-            id: interfaceId,
-            modifiers: currentModifiers,
-            typeParameters,
-            members
-        })
-    }
-
-    // Parse a single interface member: a bodyless method signature
-    // (`fn name(params): ret`) or a field signature (`name: type`).
-    protected parseInterfaceMember(): Node {
-        if(this.match(TokenType.Fn)){
-            const nameToken = this.getToken()
-            if(nameToken.type !== TokenType.Identifier){
-                throw new ParserError({
-                    type: ParserErrorType.UnexpectedToken,
-                    message: "expected a method name",
-                    line: nameToken.line,
-                    column: nameToken.column,
-                    filePath: this.fileManager.lexer.getPath()
-                })
-            }
-            const typeParameters = this.parseTypeParameters()
-            const parameters = this.parseParameterList()
-            let returnType: TypeNode = _nameType(-1, TypeKind.Void)
-            if(this.match(TokenType.Colon)){
-                returnType = this.parseType()
-            }
-            this.match(TokenType.Comma)
-            this.match(TokenType.Semicolon)
-            return _methodSignature({
-                modifiers: new Set<Modifier>(),
-                id: nameToken.data,
-                typeParameters,
-                parameters,
-                returnType
-            })
-        }
-        if(this.peek().type === TokenType.Identifier){
-            return this.parseFieldDeclaration(new Set<Modifier>())
-        }
-        const bad = this.getToken()
-        throw new ParserError({
-            type: ParserErrorType.UnexpectedToken,
-            message: "expected a field or method signature",
-            line: bad.line,
-            column: bad.column,
-            filePath: this.fileManager.lexer.getPath()
-        })
-    }
-
-    protected parseGroup(): Node {
-        if(!this.isGlobalScope()){
-            throw new ParserError({
-                type: ParserErrorType.InvalidDeclarationScope,
-                line: this.currentToken.line,
-                column: this.currentToken.column,
-                filePath: this.fileManager.lexer.getPath()
-            })
-        }
-
-        const currentModifiers = new Set<Modifier>(this.currentModifiers)
-        this.currentModifiers.clear()
-
-        const nameToken = this.getToken()
-        if(nameToken.type !== TokenType.Identifier){
-            throw new ParserError({
-                type: ParserErrorType.UnexpectedToken,
-                message: "expected a group name",
-                line: nameToken.line,
-                column: nameToken.column,
-                filePath: this.fileManager.lexer.getPath()
-            })
-        }
-        const groupId = nameToken.data
-
-        if(!this.match(TokenType.StackOpen)){
-            throw new ParserError({
-                type: ParserErrorType.InvalidSyntax,
-                message: "missing { before group body",
-                line: this.currentToken.line,
-                column: this.currentToken.column,
-                filePath: this.fileManager.lexer.getPath()
-            })
-        }
-
-        const members: number[] = []
-        const seen = new Set<number>()
-        while(!this.match(TokenType.StackClose)){
-            if(this.match(TokenType.EOF)){
-                throw new ParserError({
-                    type: ParserErrorType.UnexpectedEndOfFile,
-                    message: "missing } in group body",
-                    line: this.currentToken.line,
-                    column: this.currentToken.column,
-                    filePath: this.fileManager.lexer.getPath()
-                })
-            }
-            const memberId = this.expectIdentifier("expected a type name in group body")
-            if(seen.has(memberId)){
-                throw new ParserError({
-                    type: ParserErrorType.InvalidSyntax,
-                    message: "duplicate group member",
-                    line: this.currentToken.line,
-                    column: this.currentToken.column,
-                    filePath: this.fileManager.lexer.getPath()
-                })
-            }
-            seen.add(memberId)
-            members.push(memberId)
-            this.match(TokenType.Comma)
-        }
-
-        // A group is not a type, but its name must resolve when referenced in an
-        // `extends`/`implements`/`owns` clause, so it is recorded alongside types
-        // for name resolution (see lang/groups.md).
-        this.declaredTypes.add(groupId)
-
-        return _group({
-            id: groupId,
-            modifiers: currentModifiers,
-            members
-        })
-    }
-
-    // Consume the `{ ... }` body of a struct or class (the opening `{` must
-    // already have been matched) and return the parsed member nodes. When
-    // `allowConstructor` is false, `init` constructors are rejected.
-    protected parseMemberBlock(context: string, allowConstructor: boolean): Node[] {
+    protected parseStructBody(): Node[] {
         const members: Node[] = []
         const fieldIds = new Set<number>()
         while(!this.match(TokenType.StackClose)){
             if(this.match(TokenType.EOF)){
                 throw new ParserError({
                     type: ParserErrorType.UnexpectedEndOfFile,
-                    message: `missing } in ${context}`,
+                    message: "missing } in struct body",
                     line: this.currentToken.line,
                     column: this.currentToken.column,
                     filePath: this.fileManager.lexer.getPath()
                 })
             }
-            const member = this.parseMember(allowConstructor)
-            if(member.type === NodeType.FieldNode){
-                if(fieldIds.has(member.data.id)){
-                    throw new ParserError({
-                        type: ParserErrorType.InvalidSyntax,
-                        message: "duplicate field name",
-                        line: this.currentToken.line,
-                        column: this.currentToken.column,
-                        filePath: this.fileManager.lexer.getPath()
-                    })
+            let member: Node
+            if(this.match(TokenType.Fn)){
+                member = this.parseMethod()
+            } else if(this.peek().type === TokenType.Identifier){
+                member = this.parseFieldDeclaration()
+                if(member.type === NodeType.FieldNode){
+                    if(fieldIds.has(member.data.id)){
+                        throw new ParserError({
+                            type: ParserErrorType.InvalidSyntax,
+                            message: "duplicate field name",
+                            line: this.currentToken.line,
+                            column: this.currentToken.column,
+                            filePath: this.fileManager.lexer.getPath()
+                        })
+                    }
+                    fieldIds.add(member.data.id)
                 }
-                fieldIds.add(member.data.id)
+            } else {
+                const bad = this.getToken()
+                throw new ParserError({
+                    type: ParserErrorType.UnexpectedToken,
+                    message: "expected a field or method in struct body",
+                    line: bad.line,
+                    column: bad.column,
+                    filePath: this.fileManager.lexer.getPath()
+                })
             }
             members.push(member)
         }
         return members
     }
 
-    // Parse a single struct/class member: an optional run of access modifiers
-    // followed by a field declaration, a method, or (classes only) a constructor.
-    protected parseMember(allowConstructor: boolean): Node {
-        const modifiers = new Set<Modifier>()
-        let modifier: Modifier | undefined
-        while((modifier = this.peekMemberModifier()) !== undefined){
-            this.getToken()
-            modifiers.add(modifier)
-        }
-
-        switch(this.peek().type){
-            case TokenType.Fn: {
-                this.getToken()
-                return this.parseMethod(modifiers)
-            }
-            case TokenType.Init: {
-                this.getToken()
-                if(!allowConstructor){
-                    throw new ParserError({
-                        type: ParserErrorType.InvalidSyntax,
-                        message: "constructors (init) are only allowed in classes",
-                        line: this.currentToken.line,
-                        column: this.currentToken.column,
-                        filePath: this.fileManager.lexer.getPath()
-                    })
-                }
-                return this.parseConstructor(modifiers)
-            }
-            case TokenType.Identifier:
-                return this.parseFieldDeclaration(modifiers)
-            default: {
-                const bad = this.getToken()
-                throw new ParserError({
-                    type: ParserErrorType.UnexpectedToken,
-                    message: "expected a field, method, or constructor",
-                    line: bad.line,
-                    column: bad.column,
-                    filePath: this.fileManager.lexer.getPath()
-                })
-            }
-        }
-    }
-
-    // Map a member-modifier keyword token to its Modifier, or undefined if the
-    // next token is not a member modifier.
-    protected peekMemberModifier(): Modifier | undefined {
-        switch(this.peek().type){
-            case TokenType.Public:     return Modifier.public
-            case TokenType.Private:    return Modifier.private
-            case TokenType.Protected:  return Modifier.protected
-            case TokenType.Static:     return Modifier.static
-            case TokenType.Override:   return Modifier.override
-            default:                 return undefined
-        }
-    }
-
-    protected parseFieldDeclaration(modifiers: Set<Modifier>): Node {
+    protected parseFieldDeclaration(): Node {
         const fieldToken = this.getToken()
         const fieldId = fieldToken.data
         if(!this.match(TokenType.Colon)){
@@ -1601,10 +1029,10 @@ export class Parser{
         const type = this.parseType()
         this.match(TokenType.Comma)
         this.match(TokenType.Semicolon)
-        return _field({modifiers, id: fieldId, type})
+        return _field({modifiers: new Set(), id: fieldId, type})
     }
 
-    protected parseMethod(modifiers: Set<Modifier>): Node {
+    protected parseMethod(): Node {
         const nameToken = this.getToken()
         if(nameToken.type !== TokenType.Identifier){
             throw new ParserError({
@@ -1616,9 +1044,6 @@ export class Parser{
             })
         }
         const methodId = nameToken.data
-
-        const typeParameters = this.parseTypeParameters()
-
         const parameters = this.parseParameterList()
 
         let returnType: TypeNode = _nameType(-1, TypeKind.Void)
@@ -1641,33 +1066,13 @@ export class Parser{
 
         return _function({
             id: methodId,
-            modifiers,
-            typeParameters,
+            modifiers: new Set(),
             parameters,
             returnType,
             body
         })
     }
 
-    protected parseConstructor(modifiers: Set<Modifier>): Node {
-        const parameters = this.parseParameterList()
-
-        if(!this.match(TokenType.StackOpen)){
-            throw new ParserError({
-                type: ParserErrorType.InvalidSyntax,
-                message: "missing { before constructor body",
-                line: this.currentToken.line,
-                column: this.currentToken.column,
-                filePath: this.fileManager.lexer.getPath()
-            })
-        }
-
-        const body = this.parseCodeBlock(parameters.map(p => p.id))
-
-        return _constructor({modifiers, parameters, body})
-    }
-
-    // Read a `( <param> {"," <param>} )` parameter list, consuming both parens.
     protected parseParameterList(): FunctionParameter[] {
         if(!this.match(TokenType.LParen)){
             throw new ParserError({
@@ -1728,7 +1133,6 @@ export class Parser{
         return parameters
     }
 
-    // Read a single identifier, throwing `message` if the next token isn't one.
     protected expectIdentifier(message: string): number {
         const token = this.getToken()
         if(token.type !== TokenType.Identifier){
@@ -1741,15 +1145,6 @@ export class Parser{
             })
         }
         return token.data
-    }
-
-    // Read a comma-separated list of one or more identifiers.
-    protected parseIdentifierList(message: string): number[] {
-        const ids: number[] = [this.expectIdentifier(message)]
-        while(this.match(TokenType.Comma)){
-            ids.push(this.expectIdentifier(message))
-        }
-        return ids
     }
 
     parseFunction(): Node {
@@ -1767,8 +1162,6 @@ export class Parser{
             })
         }
         const functionId = nameToken.data
-
-        const typeParameters = this.parseTypeParameters()
 
         const parameters = this.parseParameterList()
 
@@ -1794,7 +1187,6 @@ export class Parser{
         return _function({
             id: functionId,
             modifiers: currentModifiers,
-            typeParameters,
             parameters,
             returnType,
             body
@@ -1833,11 +1225,6 @@ export class Parser{
                     return this.parseLet()
                 }
             }
-            case TokenType.Async: {
-                this.getToken()
-                this.currentModifiers.add(Modifier.async)
-                return this.parseToken()
-            }
             case TokenType.Enum: {
                 this.getToken()
                 return this.parseEnum()
@@ -1845,18 +1232,6 @@ export class Parser{
             case TokenType.Struct: {
                 this.getToken()
                 return this.parseStruct()
-            }
-            case TokenType.Class: {
-                this.getToken()
-                return this.parseClass()
-            }
-            case TokenType.Interface: {
-                this.getToken()
-                return this.parseInterface()
-            }
-            case TokenType.Group: {
-                this.getToken()
-                return this.parseGroup()
             }
             case TokenType.Export: {
                 this.getToken()
@@ -1888,113 +1263,12 @@ export class Parser{
                 this.getToken()
                 return this.parseReturn()
             }
-            case TokenType.Throw: {
-                this.getToken()
-                return this.parseThrow()
-            }
-            case TokenType.Try: {
-                this.getToken()
-                return this.parseTry()
-            }
             default: {
                 return this.parseExpression()
             }
         }
     }
 
-    protected parseCaptureEntry(): CaptureEntry {
-        let modifier = CaptureModifier.copy
-
-        // Check if next identifier is a capture modifier keyword
-        if (this.peek().type === TokenType.Identifier) {
-            const name = this.resolveIdentifierName(this.peekAt(1).data)
-            const m = CAPTURE_MODIFIER_NAMES.get(name ?? "")
-            if (m !== undefined) {
-                const after = this.peekAt(2)
-                if (after.type === TokenType.Identifier || after.type === TokenType.Star) {
-                    this.getToken()
-                    modifier = m
-                }
-            }
-        }
-
-        if (this.match(TokenType.Star)) {
-            return {modifier, variableId: null}
-        }
-
-        const identToken = this.getToken()
-        if (identToken.type !== TokenType.Identifier) {
-            throw new ParserError({
-                type: ParserErrorType.UnexpectedToken,
-                message: "expected a capture variable name or *",
-                line: identToken.line,
-                column: identToken.column,
-                filePath: this.fileManager.lexer.getPath()
-            })
-        }
-        return {modifier, variableId: identToken.data}
-    }
-
-    protected parseLambda(): Node {
-        const captures: CaptureEntry[] = []
-
-        // Optional capture list [...]
-        if (this.match(TokenType.LBrace)) {
-            while (!this.match(TokenType.RBrace)) {
-                if (this.match(TokenType.EOF)) {
-                    throw new ParserError({
-                        type: ParserErrorType.UnexpectedEndOfFile,
-                        message: "missing ] in capture list",
-                        line: this.currentToken.line,
-                        column: this.currentToken.column,
-                        filePath: this.fileManager.lexer.getPath()
-                    })
-                }
-                captures.push(this.parseCaptureEntry())
-                this.match(TokenType.Comma)
-            }
-        }
-
-        const parameters = this.parseParameterList()
-
-        // Optional return type annotation: (params): returnType => { ... }
-        let returnType: TypeNode = _nameType(-1, TypeKind.Void)
-        if (this.match(TokenType.Colon)) {
-            returnType = this.parseType()
-        }
-
-        if (!this.match(TokenType.FatArrow)) {
-            throw new ParserError({
-                type: ParserErrorType.InvalidSyntax,
-                message: "expected => after lambda parameter list",
-                line: this.currentToken.line,
-                column: this.currentToken.column,
-                filePath: this.fileManager.lexer.getPath()
-            })
-        }
-
-        if (!this.match(TokenType.StackOpen)) {
-            throw new ParserError({
-                type: ParserErrorType.InvalidSyntax,
-                message: "expected { after =>",
-                line: this.currentToken.line,
-                column: this.currentToken.column,
-                filePath: this.fileManager.lexer.getPath()
-            })
-        }
-
-        return _lambda({
-            captures,
-            parameters,
-            returnType,
-            body: this.parseCodeBlock(parameters.map(p => p.id))
-        })
-    }
-
-    // Parse an array literal `[ <expr> {"," <expr>} [","] ]`. The opening `[`
-    // must already have been consumed. Indexing (`arr[i]`) is handled separately
-    // in parsePostfix; an array literal only appears in primary position, so the
-    // two never collide.
     protected parseArrayLiteral(): Node {
         const elements: Node[] = []
         while (!this.match(TokenType.RBrace)) {
@@ -2034,17 +1308,11 @@ export class Parser{
         return _loop(this.parseCodeBlock())
     }
 
-    // Returns true if the next token is an identifier spelled `name` — used to
-    // recognise contextual keywords (`in`, `from`, `as`, `types`) that are not
-    // reserved in the lexer.
     protected peekContextualKeyword(name: string): boolean {
         return this.peek().type === TokenType.Identifier
             && this.resolveIdentifierName(this.peek().data) === name
     }
 
-    // Dispatches between the two `for` forms once the `(` is in view. A for-in
-    // loop is `for (<ident> in <expr>)`; anything else is the C-style
-    // three-clause form.
     protected parseFor(): Node {
         if (!this.match(TokenType.LParen)) {
             throw new ParserError({
@@ -2063,10 +1331,8 @@ export class Parser{
         return this.parseClassicFor()
     }
 
-    // `for (<ident> in <expr>) <block>`. The `(` has already been consumed; the
-    // loop variable is scoped to the body.
     protected parseForIn(): Node {
-        const variableId = this.getToken().data  // loop variable
+        const variableId = this.getToken().data
         this.getToken()                          // consume the `in` contextual keyword
         const iterable = this.parseExpression()
         if (!this.match(TokenType.RParen)) {
@@ -2090,9 +1356,6 @@ export class Parser{
         return _forIn(variableId, iterable, this.parseCodeBlock([variableId]))
     }
 
-    // `for (init; condition; update) <block>`. The `(` has already been
-    // consumed. Each clause is optional. A header scope holds the initializer's
-    // declarations so they remain visible to the condition, update, and body.
     protected parseClassicFor(): Node {
         this.stack.push({declaredVariables: new Set<number>()})
         this.stackIndex++
@@ -2155,10 +1418,6 @@ export class Parser{
         return _for(initializer, condition, update, body)
     }
 
-    // `import [types] (* | "{" <name> {"," <name>} "}") [as <ident>] from <string>`.
-    // The `import` keyword has already been consumed. `from`/`as`/`types` are
-    // contextual keywords (plain identifiers in the lexer). The clause order
-    // mirrors `lexer.findImports`, which drives import discovery.
     protected parseImport(): Node {
         if (!this.isGlobalScope()) {
             throw new ParserError({

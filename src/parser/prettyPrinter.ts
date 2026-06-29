@@ -1,5 +1,5 @@
 /**
- * prettyPrint.ts — AST pretty printer for the R5 parser
+ * prettyPrint.ts — AST pretty printer for the Zinc parser
  *
  * Usage:
  *   printAST(program, { label: "my file", symbolTable })
@@ -26,14 +26,12 @@ import {
     UnaryNode, PostfixNode, FieldAccessNode, LiteralNode,
     VariableNode, CallNode, StringTemplateNode,
     EnumNode, CodeBlockNode, IfNode, SwitchNode, SwitchCaseNode,
-    SwitchDefaultNode, AssignmentNode, WhileNode, LoopNode, ForNode, ForInNode, LambdaNode, ArrayLiteralNode, ReturnNode, FunctionNode,
-    StructNode, ClassNode, FieldNode, ConstructorNode,
-    InterfaceNode, MethodSignatureNode, GroupNode,
-    ThrowNode, TryNode,
+    SwitchDefaultNode, AssignmentNode, WhileNode, LoopNode, ForNode, ForInNode, ArrayLiteralNode, ReturnNode, FunctionNode,
+    StructNode, FieldNode,
     ImportNode, ImportKind, TypeNode, TypeNodeKind,
     Modifier, ExpressionOperator, BinaryExpressionOperator,
     BitwiseOperator, UnaryOperator, PostfixOperator, AssignmentOperator,
-    LiteralType, StringTemplatePartType, CaptureModifier,
+    LiteralType, StringTemplatePartType,
 } from "./ParserTypes.ts"
 import {TypeKind} from "../global/types/globalTypes.ts"
 
@@ -56,8 +54,6 @@ const C = {
 }
 
 // ─── NODE COLORS ─────────────────────────────────────────────────────────────
-// Map NodeType enum member name → ANSI color string.
-// Add entries here when you add new node types (step 4 above).
 
 const NODE_COLORS: Partial<Record<string, string>> = {
     LetNode:            C.magenta,
@@ -84,21 +80,13 @@ const NODE_COLORS: Partial<Record<string, string>> = {
     ForNode:            C.blue,
     ForInNode:          C.blue,
     ImportNode:         C.magenta,
-    LambdaNode:         C.magenta,
     ArrayLiteralNode:   C.yellow,
     BreakNode:          C.red,
     ContinueNode:       C.red,
     ReturnNode:         C.red,
     FunctionNode:       C.magenta,
     StructNode:         C.magenta,
-    ClassNode:          C.magenta,
     FieldNode:          C.green,
-    ConstructorNode:    C.magenta,
-    InterfaceNode:      C.magenta,
-    MethodSignatureNode:C.magenta,
-    GroupNode:          C.magenta,
-    ThrowNode:          C.red,
-    TryNode:            C.blue,
 }
 
 // ─── SYMBOL TABLE TYPES ───────────────────────────────────────────────────────
@@ -177,14 +165,8 @@ const TYPE_NAME: Partial<Record<TypeKind, string>> = {
 /** Render a parsed TypeNode to a colored string (e.g. `int`, `Point`, `int[]`). */
 function renderType(type: TypeNode, ctx: Ctx): string {
     switch (type.kind) {
-        case TypeNodeKind.Union:
-            return type.members.map(m => renderType(m, ctx)).join(`${DIM} | ${R}`)
         case TypeNodeKind.Array:
             return `${renderType(type.element, ctx)}${DIM}[]${R}`
-        case TypeNodeKind.Generic: {
-            const args = type.arguments.map(a => renderType(a, ctx)).join(`${DIM}, ${R}`)
-            return `${renderTypeName(type.id, type.resolved, ctx)}${DIM}<${R}${args}${DIM}>${R}`
-        }
         case TypeNodeKind.Name:
             return renderTypeName(type.id, type.resolved, ctx)
     }
@@ -195,14 +177,7 @@ function renderTypeName(id: number, resolved: TypeKind, ctx: Ctx): string {
     if (resolved !== TypeKind.Unknown) {
         return `${C.teal}${TYPE_NAME[resolved] ?? TypeKind[resolved]}${R}`
     }
-    // a written user-defined type, or an un-annotated inference slot
     return id >= 0 ? resolveType(id, ctx) : `${DIM}inferred${R}`
-}
-
-/** Render a binder's generic type-parameter list (e.g. `<T, U>`), or "" if none. */
-function renderTypeParams(ids: number[], ctx: Ctx): string {
-    if (!ids.length) return ""
-    return `${DIM}<${R}${ids.map(id => resolveType(id, ctx)).join(`${DIM}, ${R}`)}${DIM}>${R}`
 }
 
 /** Resolve a function id to a name via the symbol table (falls back to fn#id). */
@@ -261,11 +236,6 @@ const UNARY_OP: Record<UnaryOperator, string> = {
     [UnaryOperator.bitwiseNot]:  `${C.pink}~${R}`,
     [UnaryOperator.negative]:    `${C.pink}-${R}`,
     [UnaryOperator.booleanNot]:  `${C.pink}!${R}`,
-    [UnaryOperator.new]:         `${C.pink}new${R}`,
-    [UnaryOperator.typeof]:      `${C.pink}typeof${R}`,
-    [UnaryOperator.await]:       `${C.pink}await${R}`,
-    [UnaryOperator.sizeof]:      `${C.pink}sizeof${R}`,
-    [UnaryOperator.delete]:      `${C.pink}delete${R}`,
 }
 
 const POSTFIX_OP: Record<PostfixOperator, string> = {
@@ -301,7 +271,6 @@ const LIT_TYPE: Record<LiteralType, string> = {
 }
 
 // ─── NODE RENDERERS ───────────────────────────────────────────────────────────
-// Add a new `case NodeType.YourNode:` block here when extending (step 3 above).
 
 function renderNode(node: Node, ctx: Ctx): Line[] {
     const typeName = NodeType[node.type]
@@ -439,7 +408,7 @@ function renderNode(node: Node, ctx: Ctx): Line[] {
         case NodeType.EnumNode: {
             const d = node.data as EnumNode
             const mods = [...d.modifiers].map(m => Modifier[m]).join(", ") || "none"
-            lines.push(header(typeName, resolveType(d.id, ctx) + renderTypeParams(d.typeParameters, ctx), ctx))
+            lines.push(header(typeName, resolveType(d.id, ctx), ctx))
             lines.push(leaf("type", renderType(d.type, ctx), deeper(ctx)))
             lines.push(leaf("mods", `${DIM}${mods}${R}`,      deeper(ctx)))
             for (const option of d.options) {
@@ -470,7 +439,7 @@ function renderNode(node: Node, ctx: Ctx): Line[] {
             lines.push({ indent: deeper(ctx).depth, text: `${DIM}condition:${R}` })
             lines.push(...recurse(d.condition, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
             lines.push({ indent: deeper(ctx).depth, text: `${DIM}then:${R}` })
-            lines.push(...recurse(d.ifNode, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            lines.push(...recurse({type: NodeType.CodeBlock, data: d.ifNode}, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
             if (d.elseNode) {
                 lines.push({ indent: deeper(ctx).depth, text: `${DIM}else:${R}` })
                 lines.push(...recurse(d.elseNode, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
@@ -497,7 +466,7 @@ function renderNode(node: Node, ctx: Ctx): Line[] {
             lines.push({ indent: deeper(ctx).depth, text: `${DIM}value:${R}` })
             lines.push(...recurse(d.value, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
             lines.push({ indent: deeper(ctx).depth, text: `${DIM}body:${R}` })
-            lines.push(...recurse(d.body, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            lines.push(...recurse({type: NodeType.CodeBlock, data: d.body}, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
             break
         }
 
@@ -506,7 +475,7 @@ function renderNode(node: Node, ctx: Ctx): Line[] {
             const d = node.data as SwitchDefaultNode
             lines.push(header(typeName, undefined, ctx))
             lines.push({ indent: deeper(ctx).depth, text: `${DIM}body:${R}` })
-            lines.push(...recurse(d.body, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            lines.push(...recurse({type: NodeType.CodeBlock, data: d.body}, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
             break
         }
 
@@ -528,7 +497,7 @@ function renderNode(node: Node, ctx: Ctx): Line[] {
             lines.push({ indent: deeper(ctx).depth, text: `${DIM}condition:${R}` })
             lines.push(...recurse(d.condition, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
             lines.push({ indent: deeper(ctx).depth, text: `${DIM}body:${R}` })
-            lines.push(...recurse(d.body, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            lines.push(...recurse({type: NodeType.CodeBlock, data: d.body}, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
             break
         }
 
@@ -537,7 +506,7 @@ function renderNode(node: Node, ctx: Ctx): Line[] {
             const d = node.data as LoopNode
             lines.push(header(typeName, undefined, ctx))
             lines.push({ indent: deeper(ctx).depth, text: `${DIM}body:${R}` })
-            lines.push(...recurse(d.body, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            lines.push(...recurse({type: NodeType.CodeBlock, data: d.body}, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
             break
         }
 
@@ -558,7 +527,7 @@ function renderNode(node: Node, ctx: Ctx): Line[] {
                 lines.push(...recurse(d.update, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
             }
             lines.push({ indent: deeper(ctx).depth, text: `${DIM}body:${R}` })
-            lines.push(...recurse(d.body, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            lines.push(...recurse({type: NodeType.CodeBlock, data: d.body}, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
             break
         }
 
@@ -569,7 +538,7 @@ function renderNode(node: Node, ctx: Ctx): Line[] {
             lines.push({ indent: deeper(ctx).depth, text: `${DIM}in:${R}` })
             lines.push(...recurse(d.iterable, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
             lines.push({ indent: deeper(ctx).depth, text: `${DIM}body:${R}` })
-            lines.push(...recurse(d.body, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            lines.push(...recurse({type: NodeType.CodeBlock, data: d.body}, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
             break
         }
 
@@ -584,34 +553,6 @@ function renderNode(node: Node, ctx: Ctx): Line[] {
             if (d.alias !== null) {
                 lines.push(leaf("as", resolveVar(d.alias, ctx), deeper(ctx)))
             }
-            break
-        }
-
-        // ── LambdaNode ───────────────────────────────────────────────────────
-        case NodeType.LambdaNode: {
-            const d = node.data as LambdaNode
-            lines.push(header(typeName, undefined, ctx))
-            lines.push(leaf("returns", renderType(d.returnType, ctx), deeper(ctx)))
-            if (d.captures.length) {
-                lines.push({ indent: deeper(ctx).depth, text: `${DIM}captures:${R}` })
-                for (const cap of d.captures) {
-                    const modName = CaptureModifier[cap.modifier]
-                    const target = cap.variableId === null ? "*" : resolveVar(cap.variableId, ctx)
-                    lines.push(leaf("capture", `${DIM}${modName}${R} ${target}`, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
-                }
-            }
-            if (d.parameters.length) {
-                lines.push({ indent: deeper(ctx).depth, text: `${DIM}params:${R}` })
-                for (const param of d.parameters) {
-                    lines.push(leaf(
-                        "param",
-                        `${resolveVar(param.id, ctx)} ${DIM}:${R} ${renderType(param.type, ctx)}`,
-                        { ...deeper(ctx), depth: deeper(ctx).depth + 1 }
-                    ))
-                }
-            }
-            lines.push({ indent: deeper(ctx).depth, text: `${DIM}body:${R}` })
-            lines.push(...recurse(d.body, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
             break
         }
 
@@ -646,7 +587,7 @@ function renderNode(node: Node, ctx: Ctx): Line[] {
         case NodeType.FunctionNode: {
             const d = node.data as FunctionNode
             const mods = [...d.modifiers].map(m => Modifier[m]).join(", ") || "none"
-            lines.push(header(typeName, resolveFunction(d.id, ctx) + renderTypeParams(d.typeParameters, ctx), ctx))
+            lines.push(header(typeName, resolveFunction(d.id, ctx), ctx))
             lines.push(leaf("returns", renderType(d.returnType, ctx), deeper(ctx)))
             lines.push(leaf("mods",    `${DIM}${mods}${R}`,           deeper(ctx)))
             if (d.parameters.length) {
@@ -660,7 +601,7 @@ function renderNode(node: Node, ctx: Ctx): Line[] {
                 }
             }
             lines.push({ indent: deeper(ctx).depth, text: `${DIM}body:${R}` })
-            lines.push(...recurse(d.body, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
+            lines.push(...recurse({type: NodeType.CodeBlock, data: d.body}, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
             break
         }
 
@@ -668,7 +609,7 @@ function renderNode(node: Node, ctx: Ctx): Line[] {
         case NodeType.StructNode: {
             const d = node.data as StructNode
             const mods = [...d.modifiers].map(m => Modifier[m]).join(", ") || "none"
-            lines.push(header(typeName, resolveType(d.id, ctx) + renderTypeParams(d.typeParameters, ctx), ctx))
+            lines.push(header(typeName, resolveType(d.id, ctx), ctx))
             lines.push(leaf("mods", `${DIM}${mods}${R}`, deeper(ctx)))
             if (d.fields.length) {
                 lines.push({ indent: deeper(ctx).depth, text: `${DIM}members:${R}` })
@@ -679,143 +620,20 @@ function renderNode(node: Node, ctx: Ctx): Line[] {
             break
         }
 
-        // ── ClassNode ────────────────────────────────────────────────────────
-        case NodeType.ClassNode: {
-            const d = node.data as ClassNode
-            const mods = [...d.modifiers].map(m => Modifier[m]).join(", ") || "none"
-            lines.push(header(typeName, resolveType(d.id, ctx) + renderTypeParams(d.typeParameters, ctx), ctx))
-            lines.push(leaf("mods", `${DIM}${mods}${R}`, deeper(ctx)))
-            if (d.superClass !== null) {
-                lines.push(leaf("extends", resolveType(d.superClass, ctx), deeper(ctx)))
-            }
-            if (d.mixin.length) {
-                lines.push(leaf("mixin", d.mixin.map(id => resolveType(id, ctx)).join(`${DIM}, ${R}`), deeper(ctx)))
-            }
-            if (d.implementsTargets.length) {
-                lines.push(leaf("implements", d.implementsTargets.map(id => resolveType(id, ctx)).join(`${DIM}, ${R}`), deeper(ctx)))
-            }
-            if (d.owns.length) {
-                lines.push(leaf("owns", d.owns.map(id => resolveType(id, ctx)).join(`${DIM}, ${R}`), deeper(ctx)))
-            }
-            if (d.serves !== null) {
-                lines.push(leaf("serves", resolveType(d.serves, ctx), deeper(ctx)))
-            }
-            if (d.members.length) {
-                lines.push({ indent: deeper(ctx).depth, text: `${DIM}members:${R}` })
-                for (const member of d.members) {
-                    lines.push(...recurse(member, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
-                }
-            }
-            break
-        }
-
         // ── FieldNode ────────────────────────────────────────────────────────
         case NodeType.FieldNode: {
             const d = node.data as FieldNode
-            const mods = [...d.modifiers].map(m => Modifier[m]).join(", ")
             lines.push(header(
                 typeName,
-                `${resolveVar(d.id, ctx)} ${DIM}:${R} ${renderType(d.type, ctx)}${mods ? `  ${DIM}[${mods}]${R}` : ""}`,
+                `${resolveVar(d.id, ctx)} ${DIM}:${R} ${renderType(d.type, ctx)}`,
                 ctx
             ))
-            break
-        }
-
-        // ── ConstructorNode ──────────────────────────────────────────────────
-        case NodeType.ConstructorNode: {
-            const d = node.data as ConstructorNode
-            const mods = [...d.modifiers].map(m => Modifier[m]).join(", ") || "none"
-            lines.push(header(typeName, undefined, ctx))
-            lines.push(leaf("mods", `${DIM}${mods}${R}`, deeper(ctx)))
-            if (d.parameters.length) {
-                lines.push({ indent: deeper(ctx).depth, text: `${DIM}params:${R}` })
-                for (const param of d.parameters) {
-                    lines.push(leaf(
-                        "param",
-                        `${resolveVar(param.id, ctx)} ${DIM}:${R} ${renderType(param.type, ctx)}`,
-                        { ...deeper(ctx), depth: deeper(ctx).depth + 1 }
-                    ))
-                }
-            }
-            lines.push({ indent: deeper(ctx).depth, text: `${DIM}body:${R}` })
-            lines.push(...recurse(d.body, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
-            break
-        }
-
-        // ── InterfaceNode ────────────────────────────────────────────────────
-        case NodeType.InterfaceNode: {
-            const d = node.data as InterfaceNode
-            const mods = [...d.modifiers].map(m => Modifier[m]).join(", ") || "none"
-            lines.push(header(typeName, resolveType(d.id, ctx) + renderTypeParams(d.typeParameters, ctx), ctx))
-            lines.push(leaf("mods", `${DIM}${mods}${R}`, deeper(ctx)))
-            if (d.members.length) {
-                lines.push({ indent: deeper(ctx).depth, text: `${DIM}members:${R}` })
-                for (const member of d.members) {
-                    lines.push(...recurse(member, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
-                }
-            }
-            break
-        }
-
-        // ── MethodSignatureNode ──────────────────────────────────────────────
-        case NodeType.MethodSignatureNode: {
-            const d = node.data as MethodSignatureNode
-            lines.push(header(typeName, resolveFunction(d.id, ctx) + renderTypeParams(d.typeParameters, ctx), ctx))
-            lines.push(leaf("returns", renderType(d.returnType, ctx), deeper(ctx)))
-            if (d.parameters.length) {
-                lines.push({ indent: deeper(ctx).depth, text: `${DIM}params:${R}` })
-                for (const param of d.parameters) {
-                    lines.push(leaf(
-                        "param",
-                        `${resolveVar(param.id, ctx)} ${DIM}:${R} ${renderType(param.type, ctx)}`,
-                        { ...deeper(ctx), depth: deeper(ctx).depth + 1 }
-                    ))
-                }
-            }
-            break
-        }
-
-        // ── GroupNode ────────────────────────────────────────────────────────
-        case NodeType.GroupNode: {
-            const d = node.data as GroupNode
-            const mods = [...d.modifiers].map(m => Modifier[m]).join(", ") || "none"
-            lines.push(header(typeName, resolveType(d.id, ctx), ctx))
-            lines.push(leaf("mods", `${DIM}${mods}${R}`, deeper(ctx)))
-            lines.push(leaf("members", d.members.map(id => resolveType(id, ctx)).join(`${DIM}, ${R}`), deeper(ctx)))
-            break
-        }
-
-        // ── ThrowNode ────────────────────────────────────────────────────────
-        case NodeType.ThrowNode: {
-            const d = node.data as ThrowNode
-            lines.push(header(typeName, undefined, ctx))
-            lines.push(...recurse(d.value, deeper(ctx)))
-            break
-        }
-
-        // ── TryNode ──────────────────────────────────────────────────────────
-        case NodeType.TryNode: {
-            const d = node.data as TryNode
-            lines.push(header(typeName, undefined, ctx))
-            lines.push({ indent: deeper(ctx).depth, text: `${DIM}try:${R}` })
-            lines.push(...recurse(d.tryBlock, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
-            if (d.catchBlock) {
-                const binding = d.catchParam !== null ? ` ${resolveVar(d.catchParam, ctx)}` : ""
-                lines.push({ indent: deeper(ctx).depth, text: `${DIM}catch:${R}${binding}` })
-                lines.push(...recurse(d.catchBlock, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
-            }
-            if (d.finallyBlock) {
-                lines.push({ indent: deeper(ctx).depth, text: `${DIM}finally:${R}` })
-                lines.push(...recurse(d.finallyBlock, { ...deeper(ctx), depth: deeper(ctx).depth + 1 }))
-            }
             break
         }
 
         // ── FALLBACK ─────────────────────────────────────────────────────────
         default: {
             console.log("this should never happen, add a case for the new node types in renderNode!")
-            /* lines.push(header(typeName ?? `UnknownNode(${node.types})`, undefined, ctx))
-            lines.push(leaf("data", JSON.stringify((node as any).data), deeper(ctx))) */
         }
     }
 
@@ -829,23 +647,14 @@ const INDENT_LAST   = `   `
 const PREFIX_BRANCH = `${DIM}├─ ${R}`
 const PREFIX_LAST   = `${DIM}└─ ${R}`
 
-/**
- * Render a list of Line objects as a tree with box-drawing connectors.
- * Each depth level increments by 1; connectors are calculated from consecutive depths.
- */
 function renderLines(lines: Line[]): string {
-    // We need to know, for each line, whether it's the last sibling at each depth level.
-    // Strategy: group into a tree, then render.
-    // Simpler: for each line, track the set of depths that still have upcoming siblings.
-
     const result: string[] = []
-    const depthHasMore: boolean[] = [] // index = depth, value = true if more siblings follow
+    const depthHasMore: boolean[] = []
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i]
         const depth = line.indent
 
-        // For this depth: is there a next line at the same or shallower depth?
         depthHasMore[depth] = false
         for (let j = i + 1; j < lines.length; j++) {
             if (lines[j].indent <= depth) {
@@ -872,18 +681,10 @@ function renderLines(lines: Line[]): string {
 // ─── PUBLIC API ───────────────────────────────────────────────────────────────
 
 export interface PrintASTOptions {
-    /** Optional label printed above the tree. */
     label?:       string
-    /** Symbol table for resolving variable/types/string ids. */
     symbolTable?: SymbolTable
 }
 
-/**
- * Pretty-print a full Program (list of top-level nodes).
- *
- * @example
- *   printAST(program, { label: "test.r5", symbolTable: myTable })
- */
 export function printAST(program: Program, opts: PrintASTOptions = {}) {
     const { label, symbolTable } = opts
     if (label) console.log(`\n${BOLD}── ${label} ──${R}`)
@@ -895,15 +696,4 @@ export function printAST(program: Program, opts: PrintASTOptions = {}) {
 
     console.log(renderLines(allLines))
     console.log(DIM + `\n${program.children.length} top-level node(s)` + R)
-}
-
-/**
- * Pretty-print a single Node (useful for debugging a sub-expression).
- *
- * @example
- *   printNode(someNode, { symbolTable: myTable })
- */
-export function printNode(node: Node, opts: { symbolTable?: SymbolTable } = {}) {
-    const lines = renderNode(node, { depth: 0, symbolTable: opts.symbolTable })
-    console.log(renderLines(lines))
 }
