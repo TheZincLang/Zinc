@@ -8,6 +8,11 @@ problem, and drop to low-level primitives only where it actually matters.
 This repository holds the **compiler frontend**, written in TypeScript. Source
 files use the `.zn` extension.
 
+> **Branch: `prerelease`.** This is the staging branch for features that have
+> graduated from the `experimental` branch but are not yet stable enough to
+> ship. Expect things here to be more baked than `experimental`, but still
+> subject to change before they land in a stable release.
+
 > Status: **earliest development.** The lexer and parser are largely working;
 > the type checker and code generation are not yet implemented.
 
