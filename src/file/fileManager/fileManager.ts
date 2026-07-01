@@ -13,6 +13,9 @@ export class FileManager {
     tokens: Token[] = []
     astTree: Program | null = null
     exports: Node[] = []
+    // Resolved by compile.ts once every file's AST has been built — the
+    // FileManagers this file's `import ... from "..."` statements point to.
+    importedFiles: FileManager[] = []
 
     constructor(path: string) {
         this.path = path

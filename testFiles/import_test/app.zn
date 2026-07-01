@@ -1,0 +1,14 @@
+import { Point, addPoints } from "./geometry.zn"
+
+func main(): int {
+    let a: Point
+    a.x = 1
+    a.y = 2
+    let b: Point
+    b.x = 3
+    b.y = 4
+
+    let c: Point = addPoints(a, b)
+    println(`c.x = ${c.x}, c.y = ${c.y}`)
+    println(`distance = ${c.getDistanceFromOrigin()}`)
+}

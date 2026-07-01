@@ -1,0 +1,14 @@
+export struct Point {
+    x: int
+    y: int
+    func getDistanceFromOrigin(): float {
+        return sqrt(this.x * this.x + this.y * this.y)
+    }
+}
+
+export func addPoints(a: Point, b: Point): Point {
+    let result: Point
+    result.x = a.x + b.x
+    result.y = a.y + b.y
+    return result
+}

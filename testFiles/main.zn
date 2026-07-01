@@ -6,10 +6,22 @@ struct Point {
     }
 }
 
+func sum(numbers: int[]): int {
+    let total: int = 0
+    for (n in numbers) {
+        total += n
+    }
+    return total
+}
+
 func main(): int {
     print("Hello World")
     const p: Point
     p.x = 3
     p.y = 4
     print("Distance from origin: ", p.getDistanceFromOrigin())
+
+    let numbers: int[] = [1, 2, 3, 4, 5]
+    println(`sum of numbers: ${sum(numbers)}`)
+    println(`numbers[2] = ${numbers[2]}`)
 }
